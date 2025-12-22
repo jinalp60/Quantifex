@@ -5,6 +5,8 @@ import { fetchStockData } from '@/lib/stocks/yfinance'
 import { handleError } from '@/utils/errors'
 import { logger } from '@/utils/logger'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { symbol: string } }

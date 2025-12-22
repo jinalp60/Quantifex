@@ -18,7 +18,8 @@
 # misc
 .DS_Store
 .QUICKSTART.md
-.SETUP.md                                                       
+.SETUP.md  
+.VERCEL_DEPLPOY.md                                                     
 *.pem
 
 # debug

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { hashPassword } from '@/lib/auth/password'
 
+export const dynamic = 'force-dynamic'
+
 const signupSchema = z.object({
   email: z.string().email().max(255),
   password: z.string().min(8).max(128),
