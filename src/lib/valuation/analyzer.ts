@@ -20,6 +20,12 @@ export interface ValuationResult {
     absolute: number
     percentage: number
     trend: 'up' | 'down' | 'neutral'
+    periods?: {
+      '1d': { absolute: number; percentage: number; trend: 'up' | 'down' | 'neutral' }
+      '7d': { absolute: number; percentage: number; trend: 'up' | 'down' | 'neutral' }
+      '30d': { absolute: number; percentage: number; trend: 'up' | 'down' | 'neutral' }
+      '1y': { absolute: number; percentage: number; trend: 'up' | 'down' | 'neutral' }
+    }
   }
 }
 
