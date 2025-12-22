@@ -175,18 +175,18 @@ function WatchlistCard({
     <div className="border border-gray-200 rounded-lg overflow-hidden">
       {/* Compact Summary Bar */}
       <div
-        className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+        className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors gap-2"
         onClick={onToggle}
       >
-        <div className="flex items-center gap-4 flex-1">
-          <div className="font-bold text-lg text-gray-900">{symbol}</div>
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 overflow-hidden">
+          <div className="font-bold text-base sm:text-lg text-gray-900 flex-shrink-0">{symbol}</div>
           {analysis && (
             <>
-              <div className="text-sm text-gray-600">
+              <div className="text-xs sm:text-sm text-gray-600 flex-shrink-0">
                 ${analysis.currentPrice.toFixed(2)}
               </div>
               <div
-                className={`text-sm font-semibold ${
+                className={`text-xs sm:text-sm font-semibold flex-shrink-0 ${
                   analysis.priceMovement.trend === 'up'
                     ? 'text-green-600'
                     : analysis.priceMovement.trend === 'down'
@@ -198,7 +198,7 @@ function WatchlistCard({
                 {analysis.priceMovement.percentage.toFixed(2)}%
               </div>
               <span
-                className={`px-2 py-1 rounded text-xs font-semibold border ${
+                className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-semibold border flex-shrink-0 ${
                   statusColors[analysis.valuationStatus]
                 }`}
               >
@@ -207,25 +207,26 @@ function WatchlistCard({
             </>
           )}
           {isLoading && (
-            <div className="flex items-center gap-2 text-blue-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              <span className="text-xs">Loading...</span>
+            <div className="flex items-center gap-2 text-blue-600 flex-shrink-0">
+              <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-blue-600"></div>
+              <span className="text-xs hidden sm:inline">Loading...</span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <button
             onClick={(e) => {
               e.stopPropagation()
               onRemove()
             }}
-            className="text-red-600 hover:text-red-800 text-sm px-2 py-1"
+            className="text-red-600 hover:text-red-800 text-lg sm:text-xl font-bold px-2 py-1 min-w-[28px] h-7 sm:h-8 flex items-center justify-center"
             title="Remove from watchlist"
+            aria-label="Remove from watchlist"
           >
             ×
           </button>
           <svg
-            className={`w-5 h-5 text-gray-500 transition-transform ${
+            className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-500 transition-transform flex-shrink-0 ${
               isExpanded ? 'rotate-180' : ''
             }`}
             fill="none"
@@ -244,8 +245,8 @@ function WatchlistCard({
 
       {/* Expanded Details */}
       {isExpanded && analysis && (
-        <div className="p-4 bg-white border-t border-gray-200 space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="p-3 sm:p-4 bg-white border-t border-gray-200 space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <p className="text-xs text-gray-600 mb-1">Intrinsic Value</p>
               <p className="text-sm font-semibold text-gray-900">

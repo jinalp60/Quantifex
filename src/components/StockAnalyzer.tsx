@@ -88,7 +88,7 @@ export default function StockAnalyzer({
           >
             Stock Symbol
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               id="symbol"
@@ -102,7 +102,7 @@ export default function StockAnalyzer({
             <button
               type="submit"
               disabled={loading || !symbol.trim()}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+              className="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium whitespace-nowrap"
             >
               {loading ? 'Adding...' : 'Add Stock'}
             </button>
