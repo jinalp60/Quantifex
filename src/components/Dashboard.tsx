@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import StockAnalyzer from './StockAnalyzer'
+import Watchlist from './Watchlist'
 import { StockAnalysis } from '@/types/stock'
 
 export default function Dashboard() {
@@ -10,10 +11,13 @@ export default function Dashboard() {
   const [analysis, setAnalysis] = useState<StockAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [watchlistRefresh, setWatchlistRefresh] = useState(0)
 
   const handleAnalysisComplete = (result: StockAnalysis) => {
     setAnalysis(result)
     setError(null)
+    // Refresh watchlist when stock is added
+    setWatchlistRefresh((prev) => prev + 1)
   }
 
   const handleError = (message: string) => {
@@ -29,10 +33,10 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                Stock Analysis Platform
+                Quantifex
               </h1>
               <p className="text-sm text-gray-500 mt-1">
-                Professional market analysis and valuation
+                Stocks Analytics, Simplified by Intelligence
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -71,24 +75,32 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <StockAnalyzer
-          onAnalysisComplete={handleAnalysisComplete}
-          onError={handleError}
-          loading={loading}
-          setLoading={setLoading}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+            <StockAnalyzer
+              onAnalysisComplete={handleAnalysisComplete}
+              onError={handleError}
+              loading={loading}
+              setLoading={setLoading}
+            />
 
-        {error && (
-          <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-sm text-red-800">{error}</p>
-          </div>
-        )}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
 
-        {analysis && (
-          <div className="mt-8">
-            <AnalysisResults analysis={analysis} />
+            {analysis && (
+              <div>
+                <AnalysisResults analysis={analysis} />
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="lg:col-span-1">
+            <Watchlist userId={session?.user?.id} refreshTrigger={watchlistRefresh} />
+          </div>
+        </div>
       </main>
     </div>
   )
@@ -197,32 +209,70 @@ function AnalysisResults({ analysis }: { analysis: StockAnalysis }) {
       {/* Price Movement */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h3 className="text-lg font-bold text-gray-900 mb-4">
-          Recent Price Movement
+          Price Movement
         </h3>
-        <div className="flex items-center gap-4">
-          <div>
-            <p className="text-xs text-gray-600 mb-1">Change</p>
-            <p
-              className={`text-2xl font-bold ${
-                analysis.priceMovement.trend === 'up'
-                  ? 'text-green-600'
-                  : analysis.priceMovement.trend === 'down'
-                  ? 'text-red-600'
-                  : 'text-gray-600'
-              }`}
-            >
-              {analysis.priceMovement.percentage > 0 ? '+' : ''}
-              {analysis.priceMovement.percentage.toFixed(2)}%
-            </p>
+        {analysis.priceMovement.periods ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {(['1d', '7d', '30d', '1y'] as const).map((period) => {
+              const periodData = analysis.priceMovement.periods![period]
+              const periodLabels = {
+                '1d': '1 Day',
+                '7d': '7 Days',
+                '30d': '30 Days',
+                '1y': '1 Year',
+              }
+              return (
+                <div
+                  key={period}
+                  className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+                >
+                  <p className="text-xs text-gray-600 mb-2">{periodLabels[period]}</p>
+                  <p
+                    className={`text-xl font-bold mb-1 ${
+                      periodData.trend === 'up'
+                        ? 'text-green-600'
+                        : periodData.trend === 'down'
+                        ? 'text-red-600'
+                        : 'text-gray-600'
+                    }`}
+                  >
+                    {periodData.percentage > 0 ? '+' : ''}
+                    {periodData.percentage.toFixed(2)}%
+                  </p>
+                  <p className="text-sm font-semibold text-gray-700">
+                    ${periodData.absolute > 0 ? '+' : ''}
+                    {periodData.absolute.toFixed(2)}
+                  </p>
+                </div>
+              )
+            })}
           </div>
-          <div>
-            <p className="text-xs text-gray-600 mb-1">Absolute</p>
-            <p className="text-lg font-semibold text-gray-900">
-              ${analysis.priceMovement.absolute > 0 ? '+' : ''}
-              {analysis.priceMovement.absolute.toFixed(2)}
-            </p>
+        ) : (
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-xs text-gray-600 mb-1">Change</p>
+              <p
+                className={`text-2xl font-bold ${
+                  analysis.priceMovement.trend === 'up'
+                    ? 'text-green-600'
+                    : analysis.priceMovement.trend === 'down'
+                    ? 'text-red-600'
+                    : 'text-gray-600'
+                }`}
+              >
+                {analysis.priceMovement.percentage > 0 ? '+' : ''}
+                {analysis.priceMovement.percentage.toFixed(2)}%
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-600 mb-1">Absolute</p>
+              <p className="text-lg font-semibold text-gray-900">
+                ${analysis.priceMovement.absolute > 0 ? '+' : ''}
+                {analysis.priceMovement.absolute.toFixed(2)}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Recent News */}
@@ -263,6 +313,52 @@ function AnalysisResults({ analysis }: { analysis: StockAnalysis }) {
       {/* Feedback */}
       <FeedbackForm symbol={analysis.symbol} />
     </div>
+  )
+}
+
+function AddToWatchlistButton({ symbol, onAdd }: { symbol: string; onAdd?: () => void }) {
+  const [added, setAdded] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const handleAdd = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol }),
+      })
+
+      if (res.ok) {
+        setAdded(true)
+        onAdd?.()
+        setTimeout(() => setAdded(false), 3000)
+      } else {
+        const data = await res.json()
+        if (data.error?.includes('already')) {
+          setAdded(true)
+          setTimeout(() => setAdded(false), 2000)
+        }
+      }
+    } catch (error) {
+      console.error('Error adding to watchlist:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleAdd}
+      disabled={loading || added}
+      className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+        added
+          ? 'bg-green-100 text-green-800 border border-green-300'
+          : 'bg-blue-600 text-white hover:bg-blue-700'
+      } disabled:opacity-60`}
+    >
+      {loading ? 'Adding...' : added ? '✓ Added to Watchlist' : '+ Add to Watchlist'}
+    </button>
   )
 }
 

@@ -85,3 +85,66 @@ export function calculatePriceChange(data: PriceData[]): {
   }
 }
 
+export function calculatePriceChangeForPeriod(
+  data: PriceData[],
+  days: number
+): { absolute: number; percentage: number; trend: 'up' | 'down' | 'neutral' } {
+  if (data.length < 2) {
+    return { absolute: 0, percentage: 0, trend: 'neutral' }
+  }
+
+  // Get the most recent price
+  const currentPrice = data[data.length - 1].close
+  const currentDate = data[data.length - 1].date
+
+  // Find the price N days ago (or as close as possible)
+  const targetDate = new Date(currentDate)
+  targetDate.setDate(targetDate.getDate() - days)
+
+  // Find the closest data point to the target date that is NOT after the target date
+  let pastPrice = data[0].close
+  let closestIndex = 0
+  let minDiff = Infinity
+
+  // Search backwards from the end to find the closest point that's <= targetDate
+  for (let i = data.length - 2; i >= 0; i--) {
+    const dataDate = data[i].date
+    const diff = Math.abs(dataDate.getTime() - targetDate.getTime())
+    
+    // Prefer dates that are on or before the target date
+    if (dataDate <= targetDate) {
+      if (diff < minDiff) {
+        minDiff = diff
+        closestIndex = i
+        pastPrice = data[i].close
+      }
+    }
+  }
+
+  // If no date found before target, use the closest one overall
+  if (minDiff === Infinity) {
+    minDiff = Math.abs(data[0].date.getTime() - targetDate.getTime())
+    for (let i = 1; i < data.length - 1; i++) {
+      const diff = Math.abs(data[i].date.getTime() - targetDate.getTime())
+      if (diff < minDiff) {
+        minDiff = diff
+        closestIndex = i
+        pastPrice = data[i].close
+      }
+    }
+  }
+
+  const absolute = currentPrice - pastPrice
+  const percentage = ((currentPrice - pastPrice) / pastPrice) * 100
+
+  let trend: 'up' | 'down' | 'neutral' = 'neutral'
+  if (percentage > 2) trend = 'up'
+  else if (percentage < -2) trend = 'down'
+
+  return {
+    absolute: Math.round(absolute * 100) / 100,
+    percentage: Math.round(percentage * 100) / 100,
+    trend,
+  }
+}
+

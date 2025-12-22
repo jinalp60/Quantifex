@@ -6,8 +6,8 @@ import { Providers } from './providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Stock Analysis Platform',
-  description: 'Professional stock market analysis and valuation platform',
+  title: 'Quantifex',
+  description: 'Stocks Analytics, Simplified by Intelligence',
 }
 
 export default function RootLayout({

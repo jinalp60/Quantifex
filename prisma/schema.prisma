@@ -22,6 +22,7 @@ model User {
   analyses      StockAnalysis[]
   feedback      Feedback[]
   analytics     Analytics[]
+  watchlist     Watchlist[]
 }
 
 model StockSnapshot {
@@ -90,5 +91,18 @@ model RateLimit {
   lastReset     DateTime  @default(now())
   
   @@index([userId])
+}
+
+model Watchlist {
+  id            String    @id @default(uuid())
+  userId        String
+  symbol        String
+  createdAt     DateTime  @default(now())
+  
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, symbol])
+  @@index([userId])
+  @@index([symbol])
 }
 

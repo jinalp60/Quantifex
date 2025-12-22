@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db/prisma'
 import { handleError } from '@/utils/errors'
 import { logger } from '@/utils/logger'
 import { fetchFundamentals } from '@/lib/stocks/fundamentals'
+import { calculatePriceChangeForPeriod } from '@/lib/valuation/indicators'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,9 +31,9 @@ export async function POST(req: NextRequest) {
     // Track search event
     await trackEvent(session.user.id, symbol, 'search')
     
-    // Fetch stock data (with caching)
+    // Fetch stock data (with caching) - fetch 1 year for multiple period calculations
     logger.info('Fetching stock data', { symbol, userId: session.user.id })
-    const priceData = await fetchStockData(symbol, 7)
+    const priceData = await fetchStockData(symbol, 365)
     
     if (priceData.length === 0) {
       return NextResponse.json(
@@ -43,8 +44,22 @@ export async function POST(req: NextRequest) {
     
     const currentPrice = priceData[priceData.length - 1].close
     
+    // Use last 7 days for main analysis (to keep existing behavior)
+    const recentData = priceData.slice(-7)
+    
     // Perform analysis
-    const analysis = analyzeStock(priceData, currentPrice)
+    const analysis = analyzeStock(recentData, currentPrice)
+    
+    // Calculate price movements for different periods
+    const periods = {
+      '1d': calculatePriceChangeForPeriod(priceData, 1),
+      '7d': calculatePriceChangeForPeriod(priceData, 7),
+      '30d': calculatePriceChangeForPeriod(priceData, 30),
+      '1y': calculatePriceChangeForPeriod(priceData, 365),
+    }
+    
+    // Add periods to priceMovement
+    analysis.priceMovement.periods = periods
 
     // Fetch fundamentals (dividends, P/E, growth, DCF-style reference)
     const fundamentals = await fetchFundamentals(symbol)
