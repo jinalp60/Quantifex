@@ -1,6 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Quantifex Frontend - S3 + CloudFront for React SPA
 
+Parameters:
+  BackendApiUrl:
+    Type: String
+    Description: Backend API URL (e.g., https://api.example.com/api)
+    Default: ''
+
 Resources:
   # S3 Bucket for Frontend Static Files
   FrontendBucket:
@@ -104,3 +110,7 @@ Outputs:
     Value: !Ref FrontendDistribution
     Export:
       Name: QuantifexFrontendDistributionId
+  
+  BackendApiUrl:
+    Description: Backend API URL (for reference)
+    Value: !Ref BackendApiUrl

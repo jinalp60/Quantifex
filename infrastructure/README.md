@@ -92,30 +92,41 @@ aws cloudformation create-stack \
   --template-body file://backend-api.yaml \
   --parameters \
     ParameterKey=DatabaseUrl,ParameterValue=YOUR_DATABASE_URL \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-2
 ```
 
 ### Step 5: Deploy Frontend (Optional - for production)
 
-Build the frontend:
+Get the backend API URL (if backend is already deployed):
+```bash
+BACKEND_API_URL=$(aws cloudformation describe-stacks \
+  --stack-name quantifex-backend-api \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+  --output text \
+  --region us-east-2)
+
+# Add /api suffix if needed
+BACKEND_API_URL="${BACKEND_API_URL}/api"
+```
+
+Build the frontend with API URL:
 ```bash
 cd ../frontend
 
-# Update .env with production API URL (from backend-api stack output)
-# VITE_API_URL=https://your-api-gateway-url.execute-api.us-east-2.amazonaws.com/api
-
-# Build
-npm run build
+# Build with API URL from environment variable
+VITE_API_URL=$BACKEND_API_URL npm run build
 ```
 
-Deploy the stack first:
+Deploy the stack with API URL parameter:
 ```bash
 cd ../infrastructure
 
 aws cloudformation create-stack \
   --stack-name quantifex-frontend \
   --template-body file://frontend.yaml \
+  --parameters \
+    ParameterKey=BackendApiUrl,ParameterValue=$BACKEND_API_URL \
   --region us-east-2
 ```
 
@@ -148,6 +159,7 @@ aws cloudfront create-invalidation \
 
 To update an existing stack:
 
+**Pipeline Stack:**
 ```bash
 aws cloudformation update-stack \
   --stack-name quantifex-pipeline \
@@ -158,6 +170,50 @@ aws cloudformation update-stack \
     ParameterKey=UpstashRedisToken,UsePreviousValue=true \
   --capabilities CAPABILITY_IAM \
   --region us-east-2
+```
+
+**Frontend Stack:**
+```bash
+# Get current API URL
+BACKEND_API_URL=$(aws cloudformation describe-stacks \
+  --stack-name quantifex-backend-api \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+  --output text \
+  --region us-east-2)
+
+# Rebuild frontend with API URL
+cd ../frontend
+VITE_API_URL="${BACKEND_API_URL}/api" npm run build
+
+# Update stack
+cd ../infrastructure
+aws cloudformation update-stack \
+  --stack-name quantifex-frontend \
+  --template-body file://frontend.yaml \
+  --parameters \
+    ParameterKey=BackendApiUrl,ParameterValue="${BACKEND_API_URL}/api" \
+  --region us-east-2
+
+# Re-upload built files
+cd ../frontend
+BUCKET_NAME=$(aws cloudformation describe-stacks \
+  --stack-name quantifex-frontend \
+  --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
+  --output text \
+  --region us-east-2)
+
+aws s3 sync dist/ s3://$BUCKET_NAME/ --delete
+
+# Invalidate CloudFront cache
+DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+  --stack-name quantifex-frontend \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' \
+  --output text \
+  --region us-east-2)
+
+aws cloudfront create-invalidation \
+  --distribution-id $DISTRIBUTION_ID \
+  --paths "/*"
 ```
 
 ## Deleting Stacks
