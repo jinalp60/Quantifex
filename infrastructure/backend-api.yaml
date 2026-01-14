@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Quantifex Backend API - API Gateway + Lambda for Express.js
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    Description: Supabase PostgreSQL connection string
+    NoEcho: true
+
+Resources:
+  # IAM Role for Lambda Execution
+  BackendLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: quantifex-backend-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Project
+          Value: Quantifex
+
+  # Lambda Function for Backend API
+  BackendApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: quantifex-backend-api
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt BackendLambdaExecutionRole.Arn
+      Code:
+        S3Bucket: quantifex-lambdas
+        S3Key: quantiex-backend-api.zip
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          NODE_ENV: production
+      Tags:
+        - Key: Project
+          Value: Quantifex
+
+  # API Gateway REST API
+  BackendApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: quantifex-backend-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - '*'
+        MaxAge: 300
+      Tags:
+        Project: Quantifex
+
+  # API Gateway Integration
+  BackendApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref BackendApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BackendApiFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  # API Gateway Route (catch-all)
+  BackendApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BackendApi
+      RouteKey: '$default'
+      Target: !Sub integrations/${BackendApiIntegration}
+
+  # API Gateway Stage
+  BackendApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref BackendApi
+      StageName: $default
+      AutoDeploy: true
+      Tags:
+        Project: Quantifex
+
+  # Lambda Permission for API Gateway
+  BackendApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BackendApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${BackendApi}/*
+
+Outputs:
+  ApiUrl:
+    Description: Backend API URL
+    Value: !GetAtt BackendApi.ApiEndpoint
+    Export:
+      Name: QuantifexBackendApiUrl
+  
+  LambdaFunctionArn:
+    Description: Backend Lambda Function ARN
+    Value: !GetAtt BackendApiFunction.Arn
+    Export:
+      Name: QuantifexBackendLambdaArn
