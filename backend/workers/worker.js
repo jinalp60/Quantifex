@@ -1,5 +1,12 @@
-const yahooFinance = require('yahoo-finance2').default;
-const { Stock } = require('./models');
+// For yahoo-finance2 v3+, import the class and instantiate it (like legacy fundamentals.ts)
+import YahooFinance from 'yahoo-finance2';
+const yahooFinance = new YahooFinance();
+
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+ // Import CommonJS models using createRequire
+ const db = require('./models/index.js');
+ const { Stock } = db;
 
 /**
  * Worker Lambda Handler
@@ -9,7 +16,7 @@ const { Stock } = require('./models');
  * 3. Update Stock table in DB
  * 4. Update Redis cache (optional - for now we'll skip and add later)
  */
-exports.handler = async (event) => {
+export const handler = async (event) => {
     console.log('Worker triggered with event:', JSON.stringify(event));
 
     try {
@@ -23,18 +30,36 @@ exports.handler = async (event) => {
             // Fetch data for each symbol
             for (const symbol of symbols) {
                 try {
-                    // Fetch quote from Yahoo Finance
-                    const quote = await yahooFinance.quote(symbol);
+                    // Fetch quote from Yahoo Finance using quoteSummary (matching working code pattern)
+                    const symbolUpper = symbol.toUpperCase();
+                    const summaryResult = await yahooFinance.quoteSummary(symbolUpper, {
+                        modules: ['price', 'summaryDetail', 'defaultKeyStatistics']
+                    });
+                    
+                    // Extract data directly from summaryResult (matching working code access pattern)
+                    const quote = {
+                        regularMarketPrice: summaryResult.price?.regularMarketPrice ?? summaryResult.summaryDetail?.regularMarketPrice ?? null,
+                        regularMarketVolume: summaryResult.price?.regularMarketVolume ?? 0,
+                        regularMarketOpen: summaryResult.price?.regularMarketOpen ?? null,
+                        regularMarketPreviousClose: summaryResult.price?.regularMarketPreviousClose ?? null,
+                        regularMarketDayHigh: summaryResult.price?.regularMarketDayHigh ?? null,
+                        regularMarketDayLow: summaryResult.price?.regularMarketDayLow ?? null,
+                        fiftyTwoWeekHigh: summaryResult.price?.fiftyTwoWeekHigh ?? null,
+                        fiftyTwoWeekLow: summaryResult.price?.fiftyTwoWeekLow ?? null,
+                        shortName: summaryResult.price?.shortName || summaryResult.price?.longName || symbolUpper,
+                        marketCap: summaryResult.price?.marketCap ?? null,
+                        trailingPE: summaryResult.summaryDetail?.trailingPE ?? summaryResult.defaultKeyStatistics?.trailingPE ?? null
+                    };
 
-                    if (!quote) {
-                        console.warn(`No data for ${symbol}`);
+                    if (!quote || quote.regularMarketPrice == null) {
+                        console.warn(`No valid price data for ${symbol}`);
                         continue;
                     }
 
                     // Calculate simple valuation (placeholder logic)
-                    const currentPrice = quote.regularMarketPrice || 0;
-                    const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh || currentPrice;
-                    const fiftyTwoWeekLow = quote.fiftyTwoWeekLow || currentPrice;
+                    const currentPrice = quote.regularMarketPrice;
+                    const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh ?? currentPrice;
+                    const fiftyTwoWeekLow = quote.fiftyTwoWeekLow ?? currentPrice;
 
                     // Simple valuation: if price is in bottom 30% of 52-week range, consider undervalued
                     const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
@@ -69,7 +94,12 @@ exports.handler = async (event) => {
                     // await updateCache(symbol, quote);
 
                 } catch (symbolError) {
-                    console.error(`Error processing ${symbol}:`, symbolError.message);
+                    // Log full error details for debugging
+                    console.error(`Error processing ${symbol}:`, {
+                        message: symbolError.message,
+                        stack: symbolError.stack,
+                        error: symbolError
+                    });
                     // Continue with next symbol
                 }
             }

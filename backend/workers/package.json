@@ -1,6 +1,7 @@
 {
     "name": "quantifex-workers",
     "version": "1.0.0",
+    "type": "module",
     "description": "Lambda workers for stock data fetching",
     "main": "scheduler.js",
     "scripts": {
@@ -8,7 +9,7 @@
         "package:worker": "\"/c/Program Files/7-Zip/7z.exe\" a worker.zip worker.js ../models ../config package.json node_modules"
     },
     "dependencies": {
-        "yahoo-finance2": "^2.13.4",
+        "yahoo-finance2": "^3.11.2",
         "@aws-sdk/client-sqs": "^3.0.0",
         "sequelize": "^6.37.7",
         "pg": "^8.13.1",
