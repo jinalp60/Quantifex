@@ -2,11 +2,13 @@ import React, { useEffect, useState, useContext } from 'react';
 import api from '../api';
 import { AuthContext } from '../App';
 import { LogOut, Plus, TrendingUp } from 'lucide-react';
+import allTickers from '../all_tickers.json';
 
 const Dashboard = () => {
     const { user, logout } = useContext(AuthContext);
     const [watchlist, setWatchlist] = useState([]);
     const [newSymbol, setNewSymbol] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         fetchWatchlist();
@@ -21,18 +23,43 @@ const Dashboard = () => {
         }
     };
 
+    const validateTicker = (ticker) => {
+        const upperTicker = ticker.toUpperCase().trim();
+        return allTickers.includes(upperTicker);
+    };
+
     const addToWatchlist = async (e) => {
         e.preventDefault();
+        setErrorMessage('');
+        
         if (!newSymbol) return;
+        
+        const upperSymbol = newSymbol.toUpperCase().trim();
+        
+        // Validate ticker against the list
+        if (!validateTicker(upperSymbol)) {
+            setErrorMessage('Invalid stock ticker symbol');
+            return;
+        }
+        
         try {
             await api.post('/stocks/add', {
-                symbol: newSymbol.toUpperCase(),
+                symbol: upperSymbol,
                 userId: user.id
             });
             setNewSymbol('');
+            setErrorMessage('');
             fetchWatchlist();
         } catch (error) {
-            alert('Failed to add symbol');
+            setErrorMessage('Failed to add symbol');
+        }
+    };
+
+    const handleSymbolChange = (e) => {
+        setNewSymbol(e.target.value);
+        // Clear error message when user starts typing
+        if (errorMessage) {
+            setErrorMessage('');
         }
     };
 
@@ -57,18 +84,27 @@ const Dashboard = () => {
 
             <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                 <div className="px-4 py-6 sm:px-0">
-                    <div className="flex justify-between items-center mb-6">
-                        <h1 className="text-2xl font-semibold text-gray-900">Your Watchlist</h1>
-                        <form onSubmit={addToWatchlist} className="flex space-x-2">
-                            <input
-                                value={newSymbol}
-                                onChange={e => setNewSymbol(e.target.value)}
-                                placeholder="Add Symbol (e.g. AAPL)"
-                                className="p-2 border rounded shadow-sm"
-                            />
-                            <button type="submit" className="p-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700">
-                                <Plus className="h-5 w-5" />
-                            </button>
+                    <div className="mb-6">
+                        <div className="flex justify-between items-center mb-2">
+                            <h1 className="text-2xl font-semibold text-gray-900">Your Watchlist</h1>
+                        </div>
+                        <form onSubmit={addToWatchlist} className="flex flex-col space-y-2">
+                            <div className="flex space-x-2">
+                                <div className="flex-1">
+                                    <input
+                                        value={newSymbol}
+                                        onChange={handleSymbolChange}
+                                        placeholder="Add Symbol (e.g. AAPL)"
+                                        className={`w-full p-2 border rounded shadow-sm ${errorMessage ? 'border-red-500' : ''}`}
+                                    />
+                                </div>
+                                <button type="submit" className="p-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700">
+                                    <Plus className="h-5 w-5" />
+                                </button>
+                            </div>
+                            {errorMessage && (
+                                <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
+                            )}
                         </form>
                     </div>
 
