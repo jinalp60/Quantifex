@@ -56,6 +56,13 @@ aws cloudformation create-stack \
     ParameterKey=DatabaseUrl,ParameterValue=YOUR_DATABASE_URL \
     ParameterKey=UpstashRedisUrl,ParameterValue=YOUR_UPSTASH_REST_URL \
     ParameterKey=UpstashRedisToken,ParameterValue=YOUR_UPSTASH_REST_TOKEN \
+    ParameterKey=BatchSize,ParameterValue=10 \
+    ParameterKey=SchedulerRate,ParameterValue="rate(5 minutes)" \
+    ParameterKey=QueueVisibilityTimeout,ParameterValue=60 \
+    ParameterKey=UserActivityWindowHours,ParameterValue=24 \
+    ParameterKey=MarketOpenUTC,ParameterValue=14 \
+    ParameterKey=MarketCloseUTC,ParameterValue=21 \
+    ParameterKey=AllowedOrigins,ParameterValue="*" \
   --capabilities CAPABILITY_IAM \
   --region us-east-2
 ```
@@ -168,6 +175,13 @@ aws cloudformation update-stack \
     ParameterKey=DatabaseUrl,UsePreviousValue=true \
     ParameterKey=UpstashRedisUrl,UsePreviousValue=true \
     ParameterKey=UpstashRedisToken,UsePreviousValue=true \
+    ParameterKey=BatchSize,ParameterValue=10 \
+    ParameterKey=SchedulerRate,ParameterValue="rate(1 minute)" \
+    ParameterKey=QueueVisibilityTimeout,UsePreviousValue=true \
+    ParameterKey=UserActivityWindowHours,UsePreviousValue=true \
+    ParameterKey=MarketOpenUTC,UsePreviousValue=true \
+    ParameterKey=MarketCloseUTC,UsePreviousValue=true \
+    ParameterKey=AllowedOrigins,UsePreviousValue=true \
   --capabilities CAPABILITY_IAM \
   --region us-east-2
 ```

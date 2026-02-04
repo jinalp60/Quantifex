@@ -12,6 +12,34 @@ Parameters:
   UpstashRedisToken:
     Type: String
     Description: REST Token for Upstash Redis
+  BatchSize:
+    Type: Number
+    Description: Number of stock symbols per SQS message (default - 10)
+    Default: 10
+  SchedulerRate:
+    Type: String
+    Description: Frequency of the scheduler trigger (e.g., rate(5 minutes))
+    Default: "rate(5 minutes)"
+  QueueVisibilityTimeout:
+    Type: Number
+    Description: SQS Visibility Timeout in seconds
+    Default: 60
+  UserActivityWindowHours:
+    Type: Number
+    Description: Activity window for users in hours
+    Default: 24
+  MarketOpenUTC:
+    Type: Number
+    Description: UTCHours when market opens
+    Default: 14
+  MarketCloseUTC:
+    Type: Number
+    Description: UTCHours when market closes
+    Default: 21
+  AllowedOrigins:
+    Type: String
+    Description: Comma-separated list of allowed CORS origins
+    Default: "*"
 
 Resources:
   # 1. SQS Queue for Buffering Fetches
@@ -19,7 +47,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: quantifex-stock-fetch-queue
-      VisibilityTimeout: 60 # Worker has 60s to process a batch
+      VisibilityTimeout: !Ref QueueVisibilityTimeout
       MessageRetentionPeriod: 3600 # 1 hour retention
 
   # 2. IAM Role for Lambdas
@@ -60,7 +88,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas # Placeholder - assume code is uploaded here
-        S3Key: scheduler.zip
+        S3Key: scheduler-v2.zip
       Runtime: nodejs18.x
       Timeout: 30
       Environment:
@@ -68,13 +96,17 @@ Resources:
           NODE_ENV: production
           QUEUE_URL: !Ref StockFetchQueue
           DATABASE_URL: !Ref DatabaseUrl
+          BATCH_SIZE: !Ref BatchSize
+          USER_ACTIVITY_WINDOW_HOURS: !Ref UserActivityWindowHours
+          MARKET_OPEN_UTC: !Ref MarketOpenUTC
+          MARKET_CLOSE_UTC: !Ref MarketCloseUTC
 
   # 4. EventBridge Rule (Cron Trigger)
   SchedulerTrigger:
     Type: AWS::Events::Rule
     Properties:
-      Description: "Triggers Stock Scheduler every 5 minutes"
-      ScheduleExpression: "rate(5 minutes)"
+      Description: "Triggers Stock Scheduler at configurable rate"
+      ScheduleExpression: !Ref SchedulerRate
       State: ENABLED
       Targets:
         - Arn: !GetAtt SchedulerFunction.Arn
@@ -96,7 +128,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas
-        S3Key: worker.zip
+        S3Key: worker-v2.zip
       Runtime: nodejs18.x
       Timeout: 60
       Environment:
@@ -112,4 +144,4 @@ Resources:
     Properties:
       EventSourceArn: !GetAtt StockFetchQueue.Arn
       FunctionName: !Ref WorkerFunction
-      BatchSize: 1 # Process 1 message (batch of 5 symbols) at a time
+      BatchSize: 1 # Process 1 message (batch of 10 symbols) at a time
