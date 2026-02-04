@@ -84,3 +84,22 @@ exports.getUserWatchlist = async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch watchlist' });
     }
 };
+
+exports.removeStock = async (req, res) => {
+    try {
+        const { userId, symbol } = req.params;
+
+        const user = await User.findByPk(userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const stock = await Stock.findOne({ where: { symbol: symbol.toUpperCase() } });
+        if (!stock) return res.status(404).json({ error: 'Stock not found' });
+
+        await user.removeStock(stock);
+
+        res.json({ message: 'Stock removed from watchlist' });
+    } catch (error) {
+        console.error('Error in removeStock:', error);
+        res.status(500).json({ error: 'Failed to remove stock' });
+    }
+};
