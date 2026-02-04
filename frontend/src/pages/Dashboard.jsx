@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import api from '../api';
 import { AuthContext } from '../App';
-import { LogOut, Plus, TrendingUp, X } from 'lucide-react';
+import { LogOut, Plus, RotateCcw, TrendingUp, X } from 'lucide-react';
 import allTickers from '../all_tickers.json';
 
 const Dashboard = () => {
@@ -9,17 +9,28 @@ const Dashboard = () => {
     const [watchlist, setWatchlist] = useState([]);
     const [newSymbol, setNewSymbol] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     useEffect(() => {
         fetchWatchlist();
+        // Auto-refresh interval from environment (default 5 minutes)
+        const refreshInterval = parseInt(import.meta.env.VITE_DASHBOARD_REFRESH_INTERVAL) || 300000;
+        const interval = setInterval(() => {
+            fetchWatchlist();
+        }, refreshInterval);
+        return () => clearInterval(interval);
     }, []);
 
     const fetchWatchlist = async () => {
+        setIsRefreshing(true);
         try {
             const res = await api.get(`/stocks/user/${user.id}/watchlist`);
             setWatchlist(res.data);
         } catch (error) {
             console.error(error);
+        } finally {
+            // Small delay for UI feedback
+            setTimeout(() => setIsRefreshing(false), 500);
         }
     };
 
@@ -101,6 +112,14 @@ const Dashboard = () => {
                     <div className="mb-6">
                         <div className="flex justify-between items-center mb-2">
                             <h1 className="text-2xl font-semibold text-gray-900">Your Watchlist</h1>
+                            <button
+                                onClick={fetchWatchlist}
+                                disabled={isRefreshing}
+                                className="p-2 text-gray-400 hover:text-blue-600 focus:outline-none transition-all"
+                                title="Refresh stock data"
+                            >
+                                <RotateCcw className={`h-5 w-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
+                            </button>
                         </div>
                         <form onSubmit={addToWatchlist} className="flex flex-col space-y-2">
                             <div className="flex space-x-2">

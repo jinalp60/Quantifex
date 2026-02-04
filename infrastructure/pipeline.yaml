@@ -88,7 +88,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas # Placeholder - assume code is uploaded here
-        S3Key: scheduler-v3.zip
+        S3Key: scheduler-v4.zip
       Runtime: nodejs18.x
       Timeout: 30
       Environment:
@@ -128,7 +128,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas
-        S3Key: worker-v2.zip
+        S3Key: worker-v4.zip
       Runtime: nodejs18.x
       Timeout: 60
       Environment:
