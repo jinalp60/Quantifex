@@ -186,6 +186,19 @@ aws cloudformation update-stack \
   --region us-east-2
 ```
 
+**Backend API Stack:**
+```bash
+aws cloudformation update-stack \
+  --stack-name quantifex-backend-api \
+  --template-body file://backend-api.yaml \
+  --parameters \
+    ParameterKey=DatabaseUrl,UsePreviousValue=true \
+    ParameterKey=UpstashRedisUrl,UsePreviousValue=true \
+    ParameterKey=UpstashRedisToken,UsePreviousValue=true \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-2
+```
+
 **Frontend Stack:**
 ```bash
 # Get current API URL

@@ -1,6 +1,9 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { Sequelize } = require('sequelize');
-const { User, Stock } = require('./models');
+const { User, Stock } = require('./models/index.js');
 
 const sqs = new SQSClient({ region: process.env.AWS_REGION || 'us-east-2' });
 const QUEUE_URL = process.env.QUEUE_URL;
@@ -14,7 +17,7 @@ const QUEUE_URL = process.env.QUEUE_URL;
  * 4. Group symbols into batches (configurable batch size)
  * 5. Send batches to SQS
  */
-exports.handler = async (event) => {
+export const handler = async (event) => {
     console.log('Scheduler triggered at:', new Date().toISOString());
 
     try {
