@@ -9,7 +9,7 @@ const db = require('./models/index.js');
 const { Stock } = db;
 
 // Import Redis cache utilities
-const { cacheStock, invalidateStockCache } = require('../config/redis.js');
+const { cacheStock, invalidateStockCache } = require('./config/redis.js');
 
 /**
  * Worker Lambda Handler
