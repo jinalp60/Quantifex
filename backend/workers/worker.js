@@ -8,13 +8,16 @@ const require = createRequire(import.meta.url);
 const db = require('./models/index.js');
 const { Stock } = db;
 
+// Import Redis cache utilities
+const { cacheStock, invalidateStockCache } = require('../config/redis.js');
+
 /**
  * Worker Lambda Handler
  * Triggered by SQS messages
  * 1. Receive batch of symbols (up to 5)
  * 2. Fetch data from Yahoo Finance
  * 3. Update Stock table in DB
- * 4. Update Redis cache (optional - for now we'll skip and add later)
+ * 4. Update Redis cache
  */
 export const handler = async (event) => {
     console.log('Worker triggered with event:', JSON.stringify(event));
@@ -78,8 +81,20 @@ export const handler = async (event) => {
 
                         console.log(`Updated ${symbol}: $${currentPrice} (${valuationStatus})`);
 
-                        // TODO: Update Redis cache here
-                        // await updateCache(symbol, quote);
+                        // Update Redis cache with stock data
+                        await cacheStock(symbol, {
+                            symbol: symbol,
+                            currentPrice: currentPrice,
+                            volume: quote.regularMarketVolume || 0,
+                            open: quote.regularMarketOpen || currentPrice,
+                            close: quote.regularMarketPreviousClose || currentPrice,
+                            high: quote.regularMarketDayHigh || currentPrice,
+                            low: quote.regularMarketDayLow || currentPrice,
+                            intrinsicValue: currentPrice * 0.9,
+                            valuationStatus: valuationStatus,
+                            analysisSummary: analysisSummary,
+                            updatedAt: new Date().toISOString()
+                        });
 
                     } catch (symbolError) {
                         // Log full error details for debugging

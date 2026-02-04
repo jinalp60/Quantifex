@@ -6,6 +6,13 @@ Parameters:
     Type: String
     Description: Supabase PostgreSQL connection string
     NoEcho: true
+  UpstashRedisUrl:
+    Type: String
+    Description: Upstash Redis REST URL
+  UpstashRedisToken:
+    Type: String
+    Description: Upstash Redis REST Token
+    NoEcho: true
 
 Resources:
   # IAM Role for Lambda Execution
@@ -43,6 +50,9 @@ Resources:
         Variables:
           DATABASE_URL: !Ref DatabaseUrl
           NODE_ENV: production
+          UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
+          UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
+          CACHE_TTL: '300'
       Tags:
         - Key: Project
           Value: Quantifex

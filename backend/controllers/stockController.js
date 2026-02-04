@@ -1,14 +1,5 @@
 const { Stock, User } = require('../models');
-
-exports.getStocks = async (req, res) => {
-    try {
-        // Get all stocks (or filter by query)
-        const stocks = await Stock.findAll();
-        res.json(stocks);
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch stocks' });
-    }
-};
+const { cacheStock, getCachedStocks } = require('../config/redis');
 
 exports.addStock = async (req, res) => {
     try {
@@ -40,14 +31,56 @@ exports.addStock = async (req, res) => {
 exports.getUserWatchlist = async (req, res) => {
     try {
         const { userId } = req.params;
+
+        // Fetch user with only stock associations (symbols only, not full stock data)
         const user = await User.findByPk(userId, {
-            include: Stock
+            include: {
+                model: Stock,
+                attributes: ['symbol'], // Only get symbols
+                through: { attributes: [] } // Exclude join table data
+            }
         });
 
         if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user.Stocks || user.Stocks.length === 0) {
+            return res.json([]);
+        }
 
-        res.json(user.Stocks);
+        // Extract symbols
+        const symbols = user.Stocks.map(s => s.symbol);
+
+        // Batch fetch from cache using mget (1 Redis call instead of N)
+        const cachedData = await getCachedStocks(symbols);
+
+        // Separate hits from misses
+        const cachedResults = [];
+        const missedSymbols = [];
+
+        for (const symbol of symbols) {
+            if (cachedData[symbol.toUpperCase()]) {
+                cachedResults.push(cachedData[symbol.toUpperCase()]);
+            } else {
+                missedSymbols.push(symbol);
+            }
+        }
+
+        // For cache misses, fetch from database and update cache
+        if (missedSymbols.length > 0) {
+            const dbStocks = await Stock.findAll({
+                where: { symbol: missedSymbols }
+            });
+
+            for (const stock of dbStocks) {
+                const stockData = stock.toJSON();
+                await cacheStock(stock.symbol, stockData);
+                cachedResults.push(stockData);
+            }
+        }
+
+        console.log(`Watchlist cache: ${symbols.length - missedSymbols.length}/${symbols.length} hits`);
+        res.json(cachedResults);
     } catch (error) {
+        console.error('Error in getUserWatchlist:', error);
         res.status(500).json({ error: 'Failed to fetch watchlist' });
     }
 };
