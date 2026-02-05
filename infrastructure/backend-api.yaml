@@ -13,6 +13,10 @@ Parameters:
     Type: String
     Description: Upstash Redis REST Token
     NoEcho: true
+  AllowedOrigins:
+    Type: String
+    Description: Comma-separated list of allowed CORS origins
+    Default: 'http://localhost:5173'
 
 Resources:
   # IAM Role for Lambda Execution
@@ -43,7 +47,7 @@ Resources:
       Role: !GetAtt BackendLambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas
-        S3Key: quantiex-backend-api-v2.zip
+        S3Key: quantiex-backend-api-v4.zip
       MemorySize: 512
       Timeout: 30
       Environment:
@@ -53,6 +57,7 @@ Resources:
           UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
           UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
           CACHE_TTL: '300'
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
       Tags:
         - Key: Project
           Value: Quantifex

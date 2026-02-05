@@ -1,10 +1,12 @@
-const { User } = require('../models');
-const { OAuth2Client } = require('google-auth-library');
+import { User } from '../models/index.js';
+import { OAuth2Client } from 'google-auth-library';
+import bcrypt from 'bcryptjs';
+
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Note: In a real app, use bcrypt for password hashing and jsonwebtoken for tokens.
 // For now, implementing basic logic to port functionality.
 
-exports.signup = async (req, res) => {
+export const signup = async (req, res) => {
     try {
         const { email, password, name } = req.body;
 
@@ -14,10 +16,14 @@ exports.signup = async (req, res) => {
             return res.status(400).json({ error: 'User already exists' });
         }
 
-        // Create user (TODO: Hash password)
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create user
         const user = await User.create({
             email,
-            passwordHash: password, // plaintext for dev/demo as requested to keep simple, switch to bcrypt later
+            passwordHash: hashedPassword,
             name
         });
 
@@ -28,12 +34,17 @@ exports.signup = async (req, res) => {
     }
 };
 
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
         const user = await User.findOne({ where: { email } });
-        if (!user || user.passwordHash !== password) { // TODO: Use bcrypt.compare
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
+        if (!isMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
@@ -48,7 +59,7 @@ exports.login = async (req, res) => {
     }
 };
 
-exports.googleLogin = async (req, res) => {
+export const googleLogin = async (req, res) => {
     try {
         const { idToken } = req.body;
         const ticket = await client.verifyIdToken({

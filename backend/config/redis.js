@@ -1,9 +1,9 @@
-const { Redis } = require('@upstash/redis');
+import { Redis } from '@upstash/redis';
 
 // Initialize Upstash Redis client
 let redisClient = null;
 
-function getRedisClient() {
+export function getRedisClient() {
     if (!redisClient) {
         const url = process.env.UPSTASH_REDIS_REST_URL;
         const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -28,12 +28,12 @@ function getRedisClient() {
 }
 
 // Helper function to get cache TTL from environment or use default
-function getCacheTTL() {
+export function getCacheTTL() {
     return parseInt(process.env.CACHE_TTL || '300', 10); // Default 5 minutes
 }
 
 // Cache a stock by symbol
-async function cacheStock(symbol, stockData) {
+export async function cacheStock(symbol, stockData) {
     const client = getRedisClient();
     if (!client) return false;
 
@@ -50,7 +50,7 @@ async function cacheStock(symbol, stockData) {
 }
 
 // Get a stock from cache by symbol
-async function getCachedStock(symbol) {
+export async function getCachedStock(symbol) {
     const client = getRedisClient();
     if (!client) return null;
 
@@ -70,7 +70,7 @@ async function getCachedStock(symbol) {
 }
 
 // Invalidate cache for a specific stock
-async function invalidateStockCache(symbol) {
+export async function invalidateStockCache(symbol) {
     const client = getRedisClient();
     if (!client) return false;
 
@@ -86,7 +86,7 @@ async function invalidateStockCache(symbol) {
 }
 
 // Get multiple stocks from cache
-async function getCachedStocks(symbols) {
+export async function getCachedStocks(symbols) {
     const client = getRedisClient();
     if (!client) return {};
 
@@ -111,11 +111,3 @@ async function getCachedStocks(symbols) {
         return {};
     }
 }
-
-module.exports = {
-    getRedisClient,
-    cacheStock,
-    getCachedStock,
-    invalidateStockCache,
-    getCachedStocks
-};

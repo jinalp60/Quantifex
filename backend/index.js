@@ -1,11 +1,12 @@
-const express = require('express');
-const cors = require('cors');
-const serverless = require('serverless-http');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import serverless from 'serverless-http';
+import 'dotenv/config';
 
-const db = require('./models');
-const authRoutes = require('./routes/auth');
-const stockRoutes = require('./routes/stocks');
+import db from './models/index.js';
+const { sequelize } = db;
+import authRoutes from './routes/auth.js';
+import stockRoutes from './routes/stocks.js';
 
 const app = express();
 
@@ -32,7 +33,7 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 if (process.env.NODE_ENV !== 'production') {
-    db.sequelize.authenticate().then(() => {
+    sequelize.authenticate().then(() => {
         console.log('Database connected.');
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
@@ -43,5 +44,5 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Export for Serverless (Lambda)
-module.exports.handler = serverless(app);
-module.exports.app = app;
+export const handler = serverless(app);
+export { app };

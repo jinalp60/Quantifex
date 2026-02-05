@@ -1,7 +1,7 @@
-const { Stock, User } = require('../models');
-const { cacheStock, getCachedStocks } = require('../config/redis');
+import { Stock, User } from '../models/index.js';
+import { cacheStock, getCachedStocks } from '../config/redis.js';
 
-exports.addStock = async (req, res) => {
+export const addStock = async (req, res) => {
     try {
         const { symbol, userId } = req.body;
 
@@ -28,7 +28,7 @@ exports.addStock = async (req, res) => {
     }
 };
 
-exports.getUserWatchlist = async (req, res) => {
+export const getUserWatchlist = async (req, res) => {
     try {
         const { userId } = req.params;
 
@@ -85,7 +85,7 @@ exports.getUserWatchlist = async (req, res) => {
     }
 };
 
-exports.removeStock = async (req, res) => {
+export const removeStock = async (req, res) => {
     try {
         const { userId, symbol } = req.params;
 

@@ -2,14 +2,9 @@
 import YahooFinance from 'yahoo-finance2';
 const yahooFinance = new YahooFinance();
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-// Import CommonJS models using createRequire
-const db = require('./models/index.js');
-const { Stock } = db;
-
-// Import Redis cache utilities
-const { cacheStock, invalidateStockCache } = require('./config/redis.js');
+// Import ESM models and Redis cache utilities
+import { Stock } from './models/index.js';
+import { cacheStock } from './config/redis.js';
 
 /**
  * Worker Lambda Handler

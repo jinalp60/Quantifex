@@ -1,9 +1,6 @@
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
-const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { Sequelize } = require('sequelize');
-const { User, Stock } = require('./models/index.js');
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { Sequelize } from 'sequelize';
+import { User, Stock } from './models/index.js';
 
 const sqs = new SQSClient({ region: process.env.AWS_REGION || 'us-east-2' });
 const QUEUE_URL = process.env.QUEUE_URL;

@@ -84,7 +84,7 @@ cd ../backend
 npm install --production
 
 # Create deployment package
-"/c/Program Files/7-Zip/7z.exe" a quantiex-backend-api.zip index.js routes/ controllers/ models/ config/ node_modules/
+"/c/Program Files/7-Zip/7z.exe" a quantiex-backend-api.zip index.js package.json routes/ controllers/ models/ config/ node_modules/
 
 # Upload to S3
 aws s3 cp quantiex-backend-api.zip s3://quantifex-lambdas/
@@ -195,6 +195,7 @@ aws cloudformation update-stack \
     ParameterKey=DatabaseUrl,UsePreviousValue=true \
     ParameterKey=UpstashRedisUrl,UsePreviousValue=true \
     ParameterKey=UpstashRedisToken,UsePreviousValue=true \
+    ParameterKey=AllowedOrigins,UsePreviousValue=true \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-2
 ```
@@ -210,7 +211,11 @@ BACKEND_API_URL=$(aws cloudformation describe-stacks \
 
 # Rebuild frontend with API URL
 cd ../frontend
-VITE_API_URL="${BACKEND_API_URL}/api" npm run build
+
+VITE_API_URL="${BACKEND_API_URL}/api" \
+VITE_GOOGLE_CLIENT_ID="Value \
+VITE_DASHBOARD_REFRESH_INTERVAL="300000" \
+npm run build
 
 # Update stack
 cd ../infrastructure
