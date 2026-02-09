@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Quantifex Background Data Pipeline (Supabase + Upstash + Serverless)
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    Description: PostgreSQL connection URL (e.g., postgresql://user:pass@host:port/db)
+    NoEcho: true
+  UpstashRedisUrl:
+    Type: String
+    Description: Connection URL for Upstash Redis
+  UpstashRedisToken:
+    Type: String
+    Description: REST Token for Upstash Redis
+  BatchSize:
+    Type: Number
+    Description: Number of stock symbols per SQS message (default - 10)
+    Default: 10
+  SchedulerRate:
+    Type: String
+    Description: Frequency of the scheduler trigger (e.g., rate(5 minutes))
+    Default: "rate(5 minutes)"
+  QueueVisibilityTimeout:
+    Type: Number
+    Description: SQS Visibility Timeout in seconds
+    Default: 60
+  UserActivityWindowHours:
+    Type: Number
+    Description: Activity window for users in hours
+    Default: 24
+  MarketOpenUTC:
+    Type: Number
+    Description: UTCHours when market opens
+    Default: 14
+  MarketCloseUTC:
+    Type: Number
+    Description: UTCHours when market closes
+    Default: 21
+  AllowedOrigins:
+    Type: String
+    Description: Comma-separated list of allowed CORS origins
+    Default: "*"
+
+Resources:
+  # 1. SQS Queue for Buffering Fetches
+  StockFetchQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: quantifex-stock-fetch-queue
+      VisibilityTimeout: !Ref QueueVisibilityTimeout
+      MessageRetentionPeriod: 3600 # 1 hour retention
+
+  # 2. IAM Role for Lambdas
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: QuantifexLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt StockFetchQueue.Arn
+
+  # 3. Scheduler Lambda
+  SchedulerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: scheduler.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: quantifex-lambdas # Placeholder - assume code is uploaded here
+        S3Key: scheduler-v5.zip
+      Runtime: nodejs18.x
+      Timeout: 30
+      Environment:
+        Variables:
+          NODE_ENV: production
+          QUEUE_URL: !Ref StockFetchQueue
+          DATABASE_URL: !Ref DatabaseUrl
+          BATCH_SIZE: !Ref BatchSize
+          USER_ACTIVITY_WINDOW_HOURS: !Ref UserActivityWindowHours
+          MARKET_OPEN_UTC: !Ref MarketOpenUTC
+          MARKET_CLOSE_UTC: !Ref MarketCloseUTC
+
+  # 4. EventBridge Rule (Cron Trigger)
+  SchedulerTrigger:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Triggers Stock Scheduler at configurable rate"
+      ScheduleExpression: !Ref SchedulerRate
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SchedulerFunction.Arn
+          Id: "SchedulerTarget"
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SchedulerFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt SchedulerTrigger.Arn
+
+  # 5. Worker Lambda
+  WorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: worker.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: quantifex-lambdas
+        S3Key: worker-v5.zip
+      Runtime: nodejs18.x
+      Timeout: 60
+      Environment:
+        Variables:
+          NODE_ENV: production
+          DATABASE_URL: !Ref DatabaseUrl
+          UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
+          UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
+
+  # 6. SQS Trigger for Worker
+  WorkerSQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt StockFetchQueue.Arn
+      FunctionName: !Ref WorkerFunction
+      BatchSize: 1 # Process 1 message (batch of 10 symbols) at a time

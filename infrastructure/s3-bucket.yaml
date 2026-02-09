@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 Bucket for Quantifex Lambda Deployment Packages
+
+Resources:
+  LambdaCodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: quantifex-lambdas
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+      Tags:
+        - Key: Project
+          Value: Quantifex
+        - Key: Purpose
+          Value: Lambda Deployment Packages
+
+Outputs:
+  BucketName:
+    Description: Name of the S3 bucket for Lambda code
+    Value: !Ref LambdaCodeBucket
+    Export:
+      Name: QuantifexLambdaBucket
+  
+  BucketArn:
+    Description: ARN of the S3 bucket
+    Value: !GetAtt LambdaCodeBucket.Arn
+    Export:
+      Name: QuantifexLambdaBucketArn
