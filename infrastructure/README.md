@@ -6,8 +6,8 @@ This directory contains CloudFormation templates for deploying the Quantifex inf
 
 1. **s3-bucket.yaml** - S3 bucket for Lambda deployment packages
 2. **pipeline.yaml** - Background data pipeline (EventBridge, Lambda, SQS)
-3. **backend-api.yaml** - API Gateway + Lambda for Express backend (TODO)
-4. **frontend.yaml** - S3 + CloudFront for React frontend (TODO)
+3. **backend-api.yaml** - API Gateway + Lambda for Express backend
+4. **frontend.yaml** - S3 + CloudFront for React frontend
 
 ## Deployment Order
 
