@@ -56,8 +56,8 @@ export const handler = async (event) => {
                         else if (positionInRange > 0.7) valuationStatus = 'OVERVALUED';
 
                         // Prepare analysis summary
-                        const analysisSummary = `${quote.shortName || quote.longName || symbol} - Market Cap: ${formatMarketCap(quote.marketCap)}. ` +
-                            `52W Range: $${fiftyTwoWeekLow?.toFixed(2)} - $${fiftyTwoWeekHigh?.toFixed(2)}. ` +
+                        const analysisSummary = `${quote.shortName || quote.longName || symbol} - Market Cap: ${formatMarketCap(quote.marketCap)}.\n` +
+                            `52W Range: $${fiftyTwoWeekLow?.toFixed(2)} - $${fiftyTwoWeekHigh?.toFixed(2)}.\n` +
                             `P/E: ${quote.trailingPE?.toFixed(2) || 'N/A'}`;
 
                         // Update or create stock record

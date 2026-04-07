@@ -162,7 +162,9 @@ const Dashboard = () => {
                                     </div>
                                     <div className="mt-4">
                                         <p className="text-3xl font-bold text-gray-900">${stock.currentPrice || '0.00'}</p>
-                                        <p className="mt-1 text-sm text-gray-500">{stock.analysisSummary}</p>
+                                        <p className="mt-1 text-sm text-gray-500 whitespace-pre-line">
+                                            {stock.analysisSummary?.replace(/\. 52W Range:/g, '.\n52W Range:').replace(/\. P\/E:/g, '.\nP/E:')}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
