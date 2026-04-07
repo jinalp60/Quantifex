@@ -1,0 +1,33 @@
+
+title User Interaction - Dashboard Workflow
+
+actor User
+participant "Dashboard UI" as UI
+participant "Backend API" as API
+participant PostgreSQL
+participant Cache
+    
+// Adding a Stock Phase
+User->>UI: Add stock symbol (e.g., AAPL)
+UI->>API: POST /stocks/add
+API->>PostgreSQL: Create stock placeholder & link to user
+PostgreSQL-->>API: Success
+API-->>UI: 200 OK
+    
+// Watchlist Retrieval Phase (Runs on load, on add, and every 5m)
+User->>UI: View Dashboard
+UI->>API: GET /stocks/user/:id/watchlist
+API->>PostgreSQL: Fetch user's associated stock symbols
+PostgreSQL-->>API: List of symbols (e.g., AAPL, TSLA)
+
+API->>Cache: Fetch stock data for symbols (mget)
+Cache-->>API: Cached stock info (hits & misses)
+    
+alt Cache Miss (Data missing from Redis)
+    API->>PostgreSQL: Fetch full stock data for missed symbols
+    PostgreSQL-->>API: Full stock details
+    API->>Cache: Save missing stock data to cache
+end
+
+API-->>UI: Complete stock data response
+UI-->>User: Render dashboard with stock data

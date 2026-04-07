@@ -1,0 +1,44 @@
+title Background Data Pipeline
+
+participant "EventBridge Rule" as EB
+participant "Scheduler Lambda" as SL
+
+
+participant "SQS Queue" as SQS
+
+participant "Worker Lambda" as WL
+
+participant "Market Data API" as MD
+participant PostgreSQL
+participant Cache
+
+EB->SL:Scheduled interval trigger (5 or 10 mins)
+
+SL->SL:Check market open?
+alt Market Closed
+        SL-->>EB: Exit (No Fetch)
+end
+    
+SL->>PostgreSQL: Check if active users online?
+PostgreSQL-->>SL:List of active users
+alt No Active Users
+    SL-->>EB: Exit (No Fetch)
+end
+  
+SL->>PostgreSQL: Get active user's added stock symbols
+PostgreSQL-->>SL:Added stock symbols
+
+SL->>SL: Group symbols into batches of 10
+SL->>SQS: Push 1 message per batch (≤10 symbols)
+
+
+loop For each batch message
+    SQS->>WL: Deliver batch of stock symbols
+    WL->>MD: Fetch batch stock data (≤10 symbols)
+    MD-->>WL: Prices, volume, OHLC (per symbol)
+
+    loop For each symbol in batch
+        WL->>PostgreSQL: Store/Update stock data
+        WL->>Cache: Update cache
+    end
+end
