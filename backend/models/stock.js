@@ -20,6 +20,34 @@ export default (sequelize, DataTypes) => {
         low: DataTypes.FLOAT,
         intrinsicValue: DataTypes.FLOAT,
         valuationStatus: DataTypes.STRING,
+        sentimentScore: {
+            type: DataTypes.FLOAT,
+            allowNull: true
+        },
+        convictionScore: {
+            type: DataTypes.FLOAT,
+            allowNull: true
+        },
+        convictionRating: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
+        sma50: {
+            type: DataTypes.FLOAT,
+            allowNull: true
+        },
+        sma200: {
+            type: DataTypes.FLOAT,
+            allowNull: true
+        },
+        newsSummary: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        intelligenceUpdatedAt: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
         analysisSummary: DataTypes.TEXT
     }, {
         sequelize,

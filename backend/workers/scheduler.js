@@ -1,9 +1,9 @@
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { Sequelize } from 'sequelize';
 import { User, Stock } from './models/index.js';
 
-const sqs = new SQSClient({ region: process.env.AWS_REGION || 'us-east-2' });
-const QUEUE_URL = process.env.QUEUE_URL;
+const sns = new SNSClient({ region: process.env.AWS_REGION || 'us-east-2' });
+const TOPIC_ARN = process.env.SNS_TOPIC_ARN;
 
 /**
  * Scheduler Lambda Handler
@@ -12,7 +12,7 @@ const QUEUE_URL = process.env.QUEUE_URL;
  * 2. Get active users (lastActive within last 24 hours)
  * 3. Get their stock symbols
  * 4. Group symbols into batches (configurable batch size)
- * 5. Send batches to SQS
+ * 5. Broadcast batches to SNS Topic (Fan-out)
  */
 export const handler = async (event) => {
     console.log('Scheduler triggered at:', new Date().toISOString());
@@ -37,16 +37,13 @@ export const handler = async (event) => {
             return { statusCode: 200, body: 'Market closed (outside hours)' };
         }
 
-        // 2. Get active users (activity window configurable)
+        // 2. Get active users
         const activityWindowHours = parseInt(process.env.USER_ACTIVITY_WINDOW_HOURS) || 24;
-        const activityWindowMs = activityWindowHours * 60 * 60 * 1000;
-        const windowAgo = new Date(Date.now() - activityWindowMs);
+        const windowAgo = new Date(Date.now() - (activityWindowHours * 60 * 60 * 1000));
 
         const activeUsers = await User.findAll({
             where: {
-                lastActive: {
-                    [Sequelize.Op.gte]: windowAgo
-                }
+                lastActive: { [Sequelize.Op.gte]: windowAgo }
             },
             include: Stock
         });
@@ -79,15 +76,16 @@ export const handler = async (event) => {
             batches.push(symbols.slice(i, i + batchSize));
         }
 
-        // 5. Send each batch to SQS
+        // 5. Broadcast each batch to SNS (Fan-out)
         for (const batch of batches) {
             const params = {
-                QueueUrl: QUEUE_URL,
-                MessageBody: JSON.stringify({ symbols: batch })
+                TopicArn: TOPIC_ARN,
+                Message: JSON.stringify({ symbols: batch }),
+                Subject: 'Stock Update Batch'
             };
 
-            await sqs.send(new SendMessageCommand(params));
-            console.log(`Queued batch: ${batch.join(', ')}`);
+            await sns.send(new PublishCommand(params));
+            console.log(`Broadcasted batch to SNS: ${batch.join(', ')}`);
         }
 
         return {

@@ -36,21 +36,77 @@ Parameters:
     Type: Number
     Description: UTCHours when market closes
     Default: 21
+  PremiumTickers:
+    Type: CommaDelimitedList
+    Description: List of premium symbols for subscription filtering
+    Default: "AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,VOO"
   AllowedOrigins:
     Type: String
     Description: Comma-separated list of allowed CORS origins
     Default: "*"
 
 Resources:
-  # 1. SQS Queue for Buffering Fetches
-  StockFetchQueue:
+  # 0. SNS Topic for Fan-out
+  StockBatchTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantifex-stock-batch-topic
+
+  # 1. SQS Queues
+  StockPriceQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: quantifex-stock-fetch-queue
+      QueueName: quantifex-stock-price-queue
       VisibilityTimeout: !Ref QueueVisibilityTimeout
-      MessageRetentionPeriod: 3600 # 1 hour retention
+      MessageRetentionPeriod: 3600
 
-  # 2. IAM Role for Lambdas
+  StockIntelligenceQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: quantifex-stock-intelligence-queue
+      VisibilityTimeout: 120 # News + ML takes longer than prices
+      MessageRetentionPeriod: 3600
+
+  # SNS Subscriptions for Fan-out
+  PriceQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref StockBatchTopic
+      Format: json
+      Protocol: sqs
+      Endpoint: !GetAtt StockPriceQueue.Arn
+
+  IntelligenceQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref StockBatchTopic
+      Format: json
+      Protocol: sqs
+      Endpoint: !GetAtt StockIntelligenceQueue.Arn
+      FilterPolicyScope: MessageBody
+      FilterPolicy:
+        symbols: !Ref PremiumTickers
+
+  # SQS Policy to allow SNS to send messages
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref StockPriceQueue
+        - !Ref StockIntelligenceQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "sns.amazonaws.com"
+            Action: "sqs:SendMessage"
+            Resource: "*"
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref StockBatchTopic
+
+  # 2. IAM Role for Transport Lambdas
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -62,7 +118,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: QuantifexLambdaPolicy
+        - PolicyName: QuantifexTransportPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -78,7 +134,13 @@ Resources:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
                   - sqs:GetQueueAttributes
-                Resource: !GetAtt StockFetchQueue.Arn
+                Resource: 
+                  - !GetAtt StockPriceQueue.Arn
+                  - !GetAtt StockIntelligenceQueue.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref StockBatchTopic
 
   # 3. Scheduler Lambda
   SchedulerFunction:
@@ -94,7 +156,7 @@ Resources:
       Environment:
         Variables:
           NODE_ENV: production
-          QUEUE_URL: !Ref StockFetchQueue
+          SNS_TOPIC_ARN: !Ref StockBatchTopic
           DATABASE_URL: !Ref DatabaseUrl
           BATCH_SIZE: !Ref BatchSize
           USER_ACTIVITY_WINDOW_HOURS: !Ref UserActivityWindowHours
@@ -120,7 +182,7 @@ Resources:
       Principal: "events.amazonaws.com"
       SourceArn: !GetAtt SchedulerTrigger.Arn
 
-  # 5. Worker Lambda
+  # 5. Price Worker Lambda
   WorkerFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -138,10 +200,21 @@ Resources:
           UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
           UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
 
-  # 6. SQS Trigger for Worker
-  WorkerSQSTrigger:
+  # 6. Price SQS Trigger for Worker
+  PriceWorkerSQSTrigger:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
-      EventSourceArn: !GetAtt StockFetchQueue.Arn
+      EventSourceArn: !GetAtt StockPriceQueue.Arn
       FunctionName: !Ref WorkerFunction
-      BatchSize: 1 # Process 1 message (batch of 10 symbols) at a time
+      BatchSize: 1
+
+Outputs:
+  StockIntelligenceQueueArn:
+    Description: ARN of the Intelligence SQS Queue for cross-stack triggering
+    Value: !GetAtt StockIntelligenceQueue.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-IntelligenceQueueArn"
+  StockBatchTopicArn:
+    Value: !Ref StockBatchTopic
+    Export:
+      Name: !Sub "${AWS::StackName}-BatchTopicArn"

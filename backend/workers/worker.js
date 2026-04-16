@@ -18,12 +18,14 @@ export const handler = async (event) => {
     console.log('Worker triggered with event:', JSON.stringify(event));
 
     try {
-        // Parse SQS message
+        // Parse SQS messages (SNS Fan-out payloads)
         for (const record of event.Records) {
-            const message = JSON.parse(record.body);
+            const body = JSON.parse(record.body);
+            // SNS messages contain the payload in the 'Message' field as a JSON string
+            const message = body.Message ? JSON.parse(body.Message) : body;
             const symbols = message.symbols;
 
-            console.log(`Processing batch: ${symbols.join(', ')}`);
+            console.log(`Processing price batch: ${symbols.join(', ')}`);
 
             try {
                 // Batch fetch all symbols using quote API
@@ -42,12 +44,14 @@ export const handler = async (event) => {
                             continue;
                         }
 
-                        // Calculate simple valuation (placeholder logic)
+                        // Extract core price and SMA data
                         const currentPrice = quote.regularMarketPrice;
+                        const sma50 = quote.fiftyDayAverage;
+                        const sma200 = quote.twoHundredDayAverage;
+
+                        // Calculate simple valuation (placeholder logic)
                         const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh ?? currentPrice;
                         const fiftyTwoWeekLow = quote.fiftyTwoWeekLow ?? currentPrice;
-
-                        // Simple valuation: if price is in bottom 30% of 52-week range, consider undervalued
                         const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
                         const positionInRange = range > 0 ? (currentPrice - fiftyTwoWeekLow) / range : 0.5;
 
@@ -60,7 +64,7 @@ export const handler = async (event) => {
                             `52W Range: $${fiftyTwoWeekLow?.toFixed(2)} - $${fiftyTwoWeekHigh?.toFixed(2)}.\n` +
                             `P/E: ${quote.trailingPE?.toFixed(2) || 'N/A'}`;
 
-                        // Update or create stock record
+                        // Update or create stock record with new SMA fields
                         await Stock.upsert({
                             symbol: symbol,
                             currentPrice: currentPrice,
@@ -69,14 +73,15 @@ export const handler = async (event) => {
                             close: quote.regularMarketPreviousClose || currentPrice,
                             high: quote.regularMarketDayHigh || currentPrice,
                             low: quote.regularMarketDayLow || currentPrice,
-                            intrinsicValue: currentPrice * 0.9, // Placeholder: 10% discount
+                            sma50: sma50,
+                            sma200: sma200,
                             valuationStatus: valuationStatus,
                             analysisSummary: analysisSummary
                         });
 
-                        console.log(`Updated ${symbol}: $${currentPrice} (${valuationStatus})`);
+                        console.log(`Updated ${symbol}: $${currentPrice}. SMAs: 50D=${sma50}, 200D=${sma200}`);
 
-                        // Update Redis cache with stock data
+                        // Update Redis cache with full stock data including SMAs
                         await cacheStock(symbol, {
                             symbol: symbol,
                             currentPrice: currentPrice,
@@ -85,20 +90,15 @@ export const handler = async (event) => {
                             close: quote.regularMarketPreviousClose || currentPrice,
                             high: quote.regularMarketDayHigh || currentPrice,
                             low: quote.regularMarketDayLow || currentPrice,
-                            intrinsicValue: currentPrice * 0.9,
+                            sma50: sma50,
+                            sma200: sma200,
                             valuationStatus: valuationStatus,
                             analysisSummary: analysisSummary,
                             updatedAt: new Date().toISOString()
                         });
 
                     } catch (symbolError) {
-                        // Log full error details for debugging
-                        console.error(`Error processing ${quote?.symbol || 'unknown'}:`, {
-                            message: symbolError.message,
-                            stack: symbolError.stack,
-                            error: symbolError
-                        });
-                        // Continue with next symbol
+                        console.error(`Error processing ${quote?.symbol || 'unknown'}:`, symbolError.message);
                     }
                 }
             } catch (batchError) {
