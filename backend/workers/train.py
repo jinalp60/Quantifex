@@ -38,6 +38,7 @@ if __name__ == '__main__':
     parser.add_argument('--ticker', type=str)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--lookback_days', type=int, default=10)
+    parser.add_argument('--model_bucket', type=str)
     args = parser.parse_args()
 
     print(f"Starting SageMaker Training for {args.ticker}...")
@@ -105,18 +106,49 @@ if __name__ == '__main__':
     )
     
     # 5. Export for Production
-    # Save the H5 model
-    model_save_path = os.path.join(SM_MODEL_DIR, 'model.h5')
-    model.save(model_save_path)
+    # Save the H5 model (legacy/local reference)
+    model_h5_path = os.path.join(SM_MODEL_DIR, 'model.h5')
+    model.save(model_h5_path)
     
-    # Export Metadata Manifest (for debugging and versioning)
+    # Save in SavedModel format for SageMaker TF Serving (Standard)
+    # The '1' directory is for versioning, which TF Serving expects
+    sm_model_path = os.path.join(SM_MODEL_DIR, '1')
+    model.save(sm_model_path, save_format='tf')
+    
+    # Export Metadata Manifest (for lightweight Lambda scaling)
     metadata = {
         'ticker': args.ticker,
         'features': features_cols,
         'last_updated': datetime.now().isoformat(),
-        'samples': len(X)
+        'samples': len(X),
+        'scaler_min': scaler.min_.tolist(),
+        'scaler_scale': scaler.scale_.tolist()
     }
     with open(os.path.join(SM_MODEL_DIR, 'scaler_bounds.json'), 'w') as f:
         json.dump(metadata, f, indent=4)
+        
+    # 6. Standalone Scaler and Model Upload (for Stable Inference Path)
+    if args.model_bucket:
+        print(f"Packaging and uploading stable artifacts to s3://{args.model_bucket}/inference/models/...")
+        s3_client = boto3.client('s3')
+        
+        # 6.1 Upload Scaler and Bounds
+        s3_client.upload_file(scaler_path, args.model_bucket, f"inference/models/{args.ticker}.scaler.gz")
+        s3_client.upload_file(os.path.join(SM_MODEL_DIR, 'scaler_bounds.json'), args.model_bucket, f"inference/models/{args.ticker}.bounds.json")
+        
+        # 6.2 Package and Upload model.tar.gz
+        # We manually package it so we can push it to a STABLE path (ignoring the dynamic SageMaker job name)
+        import tarfile
+        tar_path = os.path.join("/tmp", f"{args.ticker}-model.tar.gz")
+        with tarfile.open(tar_path, "w:gz") as tar:
+            # Add all files in SM_MODEL_DIR to the root of the tarball
+            for root, dirs, files in os.walk(SM_MODEL_DIR):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, SM_MODEL_DIR)
+                    tar.add(full_path, arcname=rel_path)
+        
+        print(f"Uploading stable model to s3://{args.model_bucket}/inference/models/{args.ticker}.tar.gz")
+        s3_client.upload_file(tar_path, args.model_bucket, f"inference/models/{args.ticker}.tar.gz")
     
     print(f"Deployment artifacts ready for {args.ticker}!")

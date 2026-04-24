@@ -7,7 +7,6 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import joblib
-from tensorflow.keras.models import load_model
 import finnhub
 import yfinance as yf
 from io import BytesIO
@@ -141,21 +140,36 @@ def handler(event, context):
                 df_context = get_historical_context(symbol, days=LOOKBACK_DAYS)
                 if df_context is None: continue
                 
-                # 3. Model Inference (Single Output Classifier)
-                s3.download_file(S3_MODEL_BUCKET, f"models/{symbol}/scaler.gz", "/tmp/scaler.gz")
-                s3.download_file(S3_MODEL_BUCKET, f"models/{symbol}/model.h5", "/tmp/model.h5")
+                # 3. Model Inference via SageMaker
+                # Download the lightweight JSON bounds instead of the heavy joblib scaler
+                s3.download_file(S3_MODEL_BUCKET, f"inference/models/{symbol}.bounds.json", "/tmp/bounds.json")
+                with open("/tmp/bounds.json", "r") as f:
+                    bounds = json.load(f)
                 
-                scaler = joblib.load("/tmp/scaler.gz")
-                model = load_model("/tmp/model.h5")
+                # Manual MinMaxScaler: (x - min) / (max - min)
+                # Note: scaler.scale_ in sklearn is 1 / (max - min)
+                # So: x_scaled = x * scale + min_
                 
-                # Safety Check: Ensure we have exactly LOOKBACK_DAYS rows
                 context_rows = df_context[['Close', 'Volume', 'sentimentScore', 'sma50', 'sma200']]
                 if len(context_rows) < LOOKBACK_DAYS:
                     print(f"Skipping {symbol}: Insufficient history ({len(context_rows)}/{LOOKBACK_DAYS} days)")
                     continue
+
+                raw_data = context_rows[-LOOKBACK_DAYS:].values
+                scaler_min = np.array(bounds['scaler_min'])
+                scaler_scale = np.array(bounds['scaler_scale'])
+                scaled_features = (raw_data * scaler_scale) + scaler_min
                 
-                scaled_features = scaler.transform(context_rows[-LOOKBACK_DAYS:])
-                model_prob = float(model.predict(np.expand_dims(scaled_features, axis=0))[0][0])
+                # Invoke the specific serverless endpoint for this ticker
+                endpoint_name = f"price-model-{symbol}-endpoint"
+                sm_response = sm_runtime.invoke_endpoint(
+                    EndpointName=endpoint_name,
+                    ContentType='application/json',
+                    Body=json.dumps({"instances": np.expand_dims(scaled_features, axis=0).tolist()})
+                )
+                
+                predictions = json.loads(sm_response['Body'].read().decode())
+                model_prob = float(predictions['predictions'][0][0])
                 
                 # 4. Final Conviction Blending
                 # Sentiment Strength = absolute version of the decayed mean

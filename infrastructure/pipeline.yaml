@@ -72,7 +72,6 @@ Resources:
     Type: AWS::SNS::Subscription
     Properties:
       TopicArn: !Ref StockBatchTopic
-      Format: json
       Protocol: sqs
       Endpoint: !GetAtt StockPriceQueue.Arn
 
@@ -80,7 +79,6 @@ Resources:
     Type: AWS::SNS::Subscription
     Properties:
       TopicArn: !Ref StockBatchTopic
-      Format: json
       Protocol: sqs
       Endpoint: !GetAtt StockIntelligenceQueue.Arn
       FilterPolicyScope: MessageBody
@@ -150,7 +148,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas # Placeholder - assume code is uploaded here
-        S3Key: scheduler-v5.zip
+        S3Key: scheduler-v6.zip
       Runtime: nodejs18.x
       Timeout: 30
       Environment:
@@ -190,7 +188,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas
-        S3Key: worker-v5.zip
+        S3Key: worker-v6.zip
       Runtime: nodejs18.x
       Timeout: 60
       Environment:

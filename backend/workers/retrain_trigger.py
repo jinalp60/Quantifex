@@ -11,7 +11,12 @@ SAGEMAKER_ROLE = os.environ.get('SAGEMAKER_ROLE')
 
 # This would ideally be a Docker image with TensorFlow/Pandas
 # Or using the built-in SageMaker TensorFlow Estimator image
-TRAINING_IMAGE = "763104351884.dkr.ecr.us-east-1.amazonaws.com/tensorflow-training:2.6.0-cpu-py38-ubuntu20.04"
+# Get current region from boto3 session
+session = boto3.session.Session()
+REGION = session.region_name
+
+# Use a dynamic image URI based on the current region
+TRAINING_IMAGE = f"763104351884.dkr.ecr.{REGION}.amazonaws.com/tensorflow-training:2.6.0-cpu-py38-ubuntu20.04"
 
 def trigger_training(ticker):
     job_name = f"Quantifex-Retrain-{ticker}-{int(time.time())}"
@@ -31,7 +36,8 @@ def trigger_training(ticker):
             'sagemaker_submit_directory': f"s3://{MODEL_ARTIFACT_BUCKET}/code/source.tar.gz",
             'ticker': str(ticker),
             'lookback_days': str(lookback),
-            'epochs': str(epochs)
+            'epochs': str(epochs),
+            'model_bucket': str(MODEL_ARTIFACT_BUCKET)
         },
         RoleArn=SAGEMAKER_ROLE,
         InputDataConfig=[
@@ -56,7 +62,8 @@ def trigger_training(ticker):
             'VolumeSizeInGB': 10,
         },
         StoppingCondition={
-            'MaxRuntimeInSeconds': 3600 # 1 hour max
+            'MaxRuntimeInSeconds': 3600, # 1 hour max
+            'MaxWaitTimeInSeconds': 7200 # Must be >= MaxRuntimeInSeconds for Spot
         },
         EnableManagedSpotTraining=True # COST OPTIMIZATION
     )

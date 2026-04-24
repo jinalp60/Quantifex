@@ -52,6 +52,8 @@ export const handler = async (event) => {
                         // Calculate simple valuation (placeholder logic)
                         const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh ?? currentPrice;
                         const fiftyTwoWeekLow = quote.fiftyTwoWeekLow ?? currentPrice;
+
+                        // Simple valuation: if price is in bottom 30% of 52-week range, consider undervalued
                         const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
                         const positionInRange = range > 0 ? (currentPrice - fiftyTwoWeekLow) / range : 0.5;
 
@@ -75,6 +77,7 @@ export const handler = async (event) => {
                             low: quote.regularMarketDayLow || currentPrice,
                             sma50: sma50,
                             sma200: sma200,
+                            intrinsicValue: currentPrice * 0.9,
                             valuationStatus: valuationStatus,
                             analysisSummary: analysisSummary
                         });
@@ -92,13 +95,20 @@ export const handler = async (event) => {
                             low: quote.regularMarketDayLow || currentPrice,
                             sma50: sma50,
                             sma200: sma200,
+                            intrinsicValue: currentPrice * 0.9,
                             valuationStatus: valuationStatus,
                             analysisSummary: analysisSummary,
                             updatedAt: new Date().toISOString()
                         });
 
                     } catch (symbolError) {
-                        console.error(`Error processing ${quote?.symbol || 'unknown'}:`, symbolError.message);
+                        // Log full error details for debugging
+                        console.error(`Error processing ${quote?.symbol || 'unknown'}:`, {
+                            message: symbolError.message,
+                            stack: symbolError.stack,
+                            error: symbolError
+                        });
+                        // Continue with next symbol
                     }
                 }
             } catch (batchError) {

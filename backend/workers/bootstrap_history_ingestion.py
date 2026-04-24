@@ -7,7 +7,7 @@ from io import BytesIO
 
 s3 = boto3.client('s3')
 
-PREMIUM_TICKERS = os.environ.get('PREMIUM_TICKERS', 'AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,VOO').split(',')
+PREMIUM_TICKERS = os.environ.get('PREMIUM_TICKERS', 'AAPL,VOO').split(',')
 TRAINING_DATA_BUCKET = os.environ.get('TRAINING_DATA_BUCKET')
 
 def bootstrap_ticker(symbol):
