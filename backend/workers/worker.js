@@ -18,12 +18,14 @@ export const handler = async (event) => {
     console.log('Worker triggered with event:', JSON.stringify(event));
 
     try {
-        // Parse SQS message
+        // Parse SQS messages (SNS Fan-out payloads)
         for (const record of event.Records) {
-            const message = JSON.parse(record.body);
+            const body = JSON.parse(record.body);
+            // SNS messages contain the payload in the 'Message' field as a JSON string
+            const message = body.Message ? JSON.parse(body.Message) : body;
             const symbols = message.symbols;
 
-            console.log(`Processing batch: ${symbols.join(', ')}`);
+            console.log(`Processing price batch: ${symbols.join(', ')}`);
 
             try {
                 // Batch fetch all symbols using quote API
@@ -42,8 +44,12 @@ export const handler = async (event) => {
                             continue;
                         }
 
-                        // Calculate simple valuation (placeholder logic)
+                        // Extract core price and SMA data
                         const currentPrice = quote.regularMarketPrice;
+                        const sma50 = quote.fiftyDayAverage;
+                        const sma200 = quote.twoHundredDayAverage;
+
+                        // Calculate simple valuation (placeholder logic)
                         const fiftyTwoWeekHigh = quote.fiftyTwoWeekHigh ?? currentPrice;
                         const fiftyTwoWeekLow = quote.fiftyTwoWeekLow ?? currentPrice;
 
@@ -60,8 +66,8 @@ export const handler = async (event) => {
                             `52W Range: $${fiftyTwoWeekLow?.toFixed(2)} - $${fiftyTwoWeekHigh?.toFixed(2)}.\n` +
                             `P/E: ${quote.trailingPE?.toFixed(2) || 'N/A'}`;
 
-                        // Update or create stock record
-                        await Stock.upsert({
+                        // Update or create stock record with new SMA fields
+                        const [updatedStock] = await Stock.upsert({
                             symbol: symbol,
                             currentPrice: currentPrice,
                             volume: quote.regularMarketVolume || 0,
@@ -69,27 +75,18 @@ export const handler = async (event) => {
                             close: quote.regularMarketPreviousClose || currentPrice,
                             high: quote.regularMarketDayHigh || currentPrice,
                             low: quote.regularMarketDayLow || currentPrice,
-                            intrinsicValue: currentPrice * 0.9, // Placeholder: 10% discount
+                            sma50: sma50,
+                            sma200: sma200,
+                            intrinsicValue: currentPrice * 0.9,
                             valuationStatus: valuationStatus,
                             analysisSummary: analysisSummary
                         });
 
-                        console.log(`Updated ${symbol}: $${currentPrice} (${valuationStatus})`);
+                        console.log(`Updated ${symbol}: $${currentPrice}. SMAs: 50D=${sma50}, 200D=${sma200}`);
 
-                        // Update Redis cache with stock data
-                        await cacheStock(symbol, {
-                            symbol: symbol,
-                            currentPrice: currentPrice,
-                            volume: quote.regularMarketVolume || 0,
-                            open: quote.regularMarketOpen || currentPrice,
-                            close: quote.regularMarketPreviousClose || currentPrice,
-                            high: quote.regularMarketDayHigh || currentPrice,
-                            low: quote.regularMarketDayLow || currentPrice,
-                            intrinsicValue: currentPrice * 0.9,
-                            valuationStatus: valuationStatus,
-                            analysisSummary: analysisSummary,
-                            updatedAt: new Date().toISOString()
-                        });
+                        // Update Redis cache with FULL stock data from the DB record
+                        // This ensures intelligence fields (sentiment, conviction) are preserved
+                        await cacheStock(symbol, updatedStock.get({ plain: true }));
 
                     } catch (symbolError) {
                         // Log full error details for debugging

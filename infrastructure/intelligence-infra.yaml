@@ -1,0 +1,368 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::LanguageExtensions'
+Description: 'Quantifex - Intelligence Infrastructure (AI, Models, and Training)'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'quantifex-intelligence-infra'
+  PipelineStackName:
+    Type: String
+    Default: 'quantifex-pipeline'
+    Description: Name of the transport stack to import SQS Queue from
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+  FinnhubApiKey:
+    Type: String
+    NoEcho: true
+  SageMakerModelDataUrl:
+    Type: String
+    Description: S3 path to the FinBERT/LSTM models (e.g., s3://quantifex-lambdas/models/finbert/model.tar.gz)
+  LookbackDays:
+    Type: Number
+    Description: Number of daily price records used for model input sequences
+    Default: 10
+  TrainingEpochs:
+    Type: Number
+    Description: Number of training epochs for the LSTM model
+    Default: 100
+  BootstrapPeriod:
+    Type: String
+    Description: Historical data window for initial backfill (e.g., 2y)
+    Default: "2y"
+  DecayLambda:
+    Type: Number
+    Default: 0.0005
+  SentimentWeight:
+    Type: Number
+    Default: 0.3
+  BullishThreshold:
+    Type: Number
+    Default: 0.65
+  BearishThreshold:
+    Type: Number
+    Default: 0.35
+  NewsFetchLimit:
+    Type: Number
+    Default: 20
+  PremiumTickers:
+    Type: CommaDelimitedList
+    Default: "AAPL,VOO"
+  UpstashRedisUrl:
+    Type: String
+  UpstashRedisToken:
+    Type: String
+
+Resources:
+  # 1. Dependency Layers
+  CustomDependencyLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "${ProjectName}-CustomDeps"
+      Description: "AI Dependencies: yfinance, scikit-learn, joblib, psycopg2-binary"
+      Content:
+        S3Bucket: !ImportValue QuantifexLambdaBucketName
+        S3Key: custom-dependencies.zip
+      CompatibleRuntimes:
+        - python3.9
+
+  # 2. Worker Execution Role (Now handles SageMaker + Secrets + S3)
+  WorkerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+                - sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: QuantifexIntelligencePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: 
+                  - !ImportValue QuantifexTrainingDataBucketArn
+                  - !Sub
+                    - "${Arn}/*"
+                    - Arn: !ImportValue QuantifexTrainingDataBucketArn
+                  - !ImportValue QuantifexModelArtifactBucketArn
+                  - !Sub
+                    - "${Arn}/*"
+                    - Arn: !ImportValue QuantifexModelArtifactBucketArn
+              - Effect: Allow
+                Action:
+                  - sagemaker:CreateTrainingJob
+                  - sagemaker:DescribeTrainingJob
+                  - sagemaker:InvokeEndpoint
+                  - iam:PassRole
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !ImportValue 
+                  Fn::Sub: "${PipelineStackName}-IntelligenceQueueArn"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref FinnhubSecret
+
+  # 3. Finnhub Secrets (Moved to Intelligence Zone)
+  FinnhubSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "quantifex/finnhub/api-key-${AWS::StackName}"
+      Description: "Finnhub API Key for Intelligence Zone"
+      GenerateSecretString:
+        SecretStringTemplate: '{"api_key": ""}'
+        GenerateStringKey: "api_key"
+
+  # 4. SageMaker Infrastructure (FinBERT & Price Models)
+  FinBertModel:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub "FinBertModel-${AWS::StackName}"
+      ExecutionRoleArn: !GetAtt WorkerExecutionRole.Arn
+      PrimaryContainer:
+        Image: !Sub "763104351884.dkr.ecr.${AWS::Region}.amazonaws.com/huggingface-pytorch-inference:1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04"
+        ModelDataUrl: !Ref SageMakerModelDataUrl
+        Environment:
+          HF_MODEL_ID: "ProsusAI/finbert"
+          HF_TASK: "text-classification"
+
+  FinBertConfig:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub "FinBertConfig-${AWS::StackName}"
+      ProductionVariants:
+        - VariantName: AllTraffic
+          ModelName: !GetAtt FinBertModel.ModelName
+          ServerlessConfig:
+            MaxConcurrency: 1
+            MemorySizeInMB: 3072
+
+  FinBertEndpoint:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointConfigName: !GetAtt FinBertConfig.EndpointConfigName
+
+  # 4.5 SageMaker Price Model - Separate Serverless Endpoints per Ticker
+  'Fn::ForEach::PriceModels':
+    - Ticker
+    - !Ref PremiumTickers
+    - 'PriceModel${Ticker}':
+        Type: AWS::SageMaker::Model
+        Properties:
+          ModelName: !Sub "PriceModel-${Ticker}"
+          ExecutionRoleArn: !GetAtt WorkerExecutionRole.Arn
+          PrimaryContainer:
+            Image: !Sub "763104351884.dkr.ecr.${AWS::Region}.amazonaws.com/tensorflow-inference:2.11.0-cpu-py39-ubuntu20.04-sagemaker"
+            ModelDataUrl: !Sub 
+              - "s3://${Bucket}/inference/models/${Ticker}.tar.gz"
+              - Bucket: !ImportValue QuantifexModelArtifactBucketName
+
+      'PriceModelConfig${Ticker}':
+        Type: AWS::SageMaker::EndpointConfig
+        DependsOn: 
+          - !Sub "PriceModel${Ticker}"
+        Properties:
+          EndpointConfigName: !Sub "PriceModelConfig-${Ticker}"
+          ProductionVariants:
+            - VariantName: AllTraffic
+              ModelName: !Sub "PriceModel-${Ticker}"
+              ServerlessConfig:
+                MaxConcurrency: 1
+                MemorySizeInMB: 3072
+
+      'PriceModelEndpoint${Ticker}':
+        Type: AWS::SageMaker::Endpoint
+        DependsOn: 
+          - !Sub "PriceModelConfig${Ticker}"
+        Properties:
+          EndpointName: !Sub "price-model-${Ticker}-endpoint"
+          EndpointConfigName: !Sub "PriceModelConfig-${Ticker}"
+
+  # 5. Intelligence Worker Lambda
+  IntelligenceWorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-InferenceWorker"
+      Handler: intelligence_worker.handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !ImportValue QuantifexLambdaBucketName
+        S3Key: intelligence-v4.zip
+      Runtime: python3.9
+      Timeout: 120
+      MemorySize: 512
+      Layers:
+        - !Ref CustomDependencyLayer
+        - !Sub "arn:aws:lambda:${AWS::Region}:336392948345:layer:AWSSDKPandas-Python39:21"
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          FINNHUB_SECRET_ID: !Ref FinnhubSecret
+          SAGEMAKER_ENDPOINT: !GetAtt FinBertEndpoint.EndpointName
+          S3_MODEL_BUCKET: !ImportValue QuantifexModelArtifactBucketName
+          TRAINING_DATA_BUCKET: !ImportValue QuantifexTrainingDataBucketName
+          PREMIUM_TICKERS: !Join [",", !Ref PremiumTickers]
+          DECAY_LAMBDA: !Ref DecayLambda
+          SENTIMENT_WEIGHT: !Ref SentimentWeight
+          BULLISH_THRESHOLD: !Ref BullishThreshold
+          BEARISH_THRESHOLD: !Ref BearishThreshold
+          NEWS_FETCH_LIMIT: !Ref NewsFetchLimit
+          LOOKBACK_DAYS: !Ref LookbackDays
+          UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
+          UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
+
+  IntelligenceSQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      # Importing from the Transport Stack
+      EventSourceArn: !ImportValue 
+        Fn::Sub: "${PipelineStackName}-IntelligenceQueueArn"
+      FunctionName: !Ref IntelligenceWorkerFunction
+      BatchSize: 1
+
+  # 5.5 Bootstrap History Function (Manual trigger for backfills)
+  BootstrapHistoryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-BootstrapHistory"
+      Handler: bootstrap_history_ingestion.handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !ImportValue QuantifexLambdaBucketName
+        S3Key: intelligence-v4.zip
+      Runtime: python3.9
+      Timeout: 900
+      MemorySize: 512
+      Layers:
+        - !Ref CustomDependencyLayer
+        - !Sub "arn:aws:lambda:${AWS::Region}:336392948345:layer:AWSSDKPandas-Python39:21"
+      Environment:
+        Variables:
+          TRAINING_DATA_BUCKET: !ImportValue QuantifexTrainingDataBucketName
+          BOOTSTRAP_PERIOD: !Ref BootstrapPeriod
+          PREMIUM_TICKERS: !Join [",", !Ref PremiumTickers]
+
+  # 6. Training & Orchestration Functions
+  RetrainTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-RetrainTrigger"
+      Handler: retrain_trigger.handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !ImportValue QuantifexLambdaBucketName
+        S3Key: intelligence-v4.zip
+      Runtime: python3.9
+      Timeout: 300
+      MemorySize: 512
+      Layers:
+        - !Ref CustomDependencyLayer
+        - !Sub "arn:aws:lambda:${AWS::Region}:336392948345:layer:AWSSDKPandas-Python39:21"
+      Environment:
+        Variables:
+          TRAINING_DATA_BUCKET: !ImportValue QuantifexTrainingDataBucketName
+          MODEL_ARTIFACT_BUCKET: !ImportValue QuantifexModelArtifactBucketName
+          SAGEMAKER_ROLE: !GetAtt WorkerExecutionRole.Arn
+          LOOKBACK_DAYS: !Ref LookbackDays
+          TRAINING_EPOCHS: !Ref TrainingEpochs
+          PREMIUM_TICKERS: !Join [",", !Ref PremiumTickers]
+
+  DailyDataFetcherFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-DailyDataFetcher"
+      Handler: daily_data_fetcher.handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !ImportValue QuantifexLambdaBucketName
+        S3Key: intelligence-v4.zip
+      Runtime: python3.9
+      Timeout: 900
+      MemorySize: 512
+      Layers:
+        - !Ref CustomDependencyLayer
+        - !Sub "arn:aws:lambda:${AWS::Region}:336392948345:layer:AWSSDKPandas-Python39:21"
+      Environment:
+        Variables:
+          TRAINING_DATA_BUCKET: !ImportValue QuantifexTrainingDataBucketName
+          FINNHUB_SECRET_ID: !Ref FinnhubSecret
+          SAGEMAKER_ENDPOINT: !GetAtt FinBertEndpoint.EndpointName
+          BOOTSTRAP_PERIOD: !Ref BootstrapPeriod
+          PREMIUM_TICKERS: !Join [",", !Ref PremiumTickers]
+
+  # 6.5 Signal Auditor Reconciler (Automated accuracy tracking)
+  AuditReconcilerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-AuditReconciler"
+      Handler: audit_reconciler.handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !ImportValue QuantifexLambdaBucketName
+        S3Key: intelligence-v4.zip
+      Runtime: python3.9
+      Timeout: 300
+      MemorySize: 512
+      Layers:
+        - !Ref CustomDependencyLayer
+        - !Sub "arn:aws:lambda:${AWS::Region}:336392948345:layer:AWSSDKPandas-Python39:21"
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+
+  # Trigger Reconciliation daily at midnight UTC
+  AuditReconcilerTrigger:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Daily trigger for signal performance reconciliation"
+      ScheduleExpression: "cron(0 0 * * ? *)" 
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt AuditReconcilerFunction.Arn
+          Id: "AuditReconcilerTarget"
+
+  PermissionForEventsToInvokeAudit:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuditReconcilerFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt AuditReconcilerTrigger.Arn
+
+Outputs:
+  TrainingBucketName:
+    Value: !ImportValue QuantifexTrainingDataBucketName
+  ModelBucketName:
+    Value: !ImportValue QuantifexModelArtifactBucketName
+  FinBertEndpointName:
+    Value: !GetAtt FinBertEndpoint.EndpointName
+  CustomLayerArn:
+    Value: !Ref CustomDependencyLayer

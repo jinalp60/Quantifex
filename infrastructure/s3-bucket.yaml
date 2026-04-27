@@ -1,11 +1,20 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: S3 Bucket for Quantifex Lambda Deployment Packages
+Description: Core S3 Infrastructure for Quantifex Project
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'quantifex'
+  BucketSuffix:
+    Type: String
+    Default: 'v1'
+    Description: Unique suffix for bucket naming (e.g., v1, x52b)
 
 Resources:
   LambdaCodeBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: quantifex-lambdas
+      BucketName: !Sub "${ProjectName}-lambdas"
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
@@ -28,15 +37,61 @@ Resources:
         - Key: Purpose
           Value: Lambda Deployment Packages
 
+  TrainingDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-training-data-${BucketSuffix}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ModelArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-models-${BucketSuffix}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
 Outputs:
-  BucketName:
-    Description: Name of the S3 bucket for Lambda code
+  # Lambda Bucket Exports
+  LambdaBucketName:
     Value: !Ref LambdaCodeBucket
     Export:
-      Name: QuantifexLambdaBucket
-  
-  BucketArn:
-    Description: ARN of the S3 bucket
+      Name: QuantifexLambdaBucketName
+  LambdaBucketArn:
     Value: !GetAtt LambdaCodeBucket.Arn
     Export:
       Name: QuantifexLambdaBucketArn
+
+  # Intelligence Data Bucket Exports
+  TrainingDataBucketName:
+    Value: !Ref TrainingDataBucket
+    Export:
+      Name: QuantifexTrainingDataBucketName
+  TrainingDataBucketArn:
+    Value: !GetAtt TrainingDataBucket.Arn
+    Export:
+      Name: QuantifexTrainingDataBucketArn
+
+  # Intelligence Model Bucket Exports
+  ModelArtifactBucketName:
+    Value: !Ref ModelArtifactBucket
+    Export:
+      Name: QuantifexModelArtifactBucketName
+  ModelArtifactBucketArn:
+    Value: !GetAtt ModelArtifactBucket.Arn
+    Export:
+      Name: QuantifexModelArtifactBucketArn
