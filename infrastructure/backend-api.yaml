@@ -47,7 +47,7 @@ Resources:
       Role: !GetAtt BackendLambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas
-        S3Key: quantiex-backend-api-v4.zip
+        S3Key: quantiex-backend-api-v5.zip
       MemorySize: 512
       Timeout: 30
       Environment:

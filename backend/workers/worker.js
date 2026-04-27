@@ -67,7 +67,7 @@ export const handler = async (event) => {
                             `P/E: ${quote.trailingPE?.toFixed(2) || 'N/A'}`;
 
                         // Update or create stock record with new SMA fields
-                        const [updatedStock] = await Stock.upsert({
+                        await Stock.upsert({
                             symbol: symbol,
                             currentPrice: currentPrice,
                             volume: quote.regularMarketVolume || 0,
@@ -82,11 +82,13 @@ export const handler = async (event) => {
                             analysisSummary: analysisSummary
                         });
 
+                        // Re-fetch the full record to ensure we have the AI fields (sentiment, conviction, etc.)
+                        const fullStock = await Stock.findByPk(symbol);
+
                         console.log(`Updated ${symbol}: $${currentPrice}. SMAs: 50D=${sma50}, 200D=${sma200}`);
 
-                        // Update Redis cache with FULL stock data from the DB record
-                        // This ensures intelligence fields (sentiment, conviction) are preserved
-                        await cacheStock(symbol, updatedStock.get({ plain: true }));
+                        // Update Redis cache with FULL stock data
+                        await cacheStock(symbol, fullStock.get({ plain: true }));
 
                     } catch (symbolError) {
                         // Log full error details for debugging

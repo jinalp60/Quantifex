@@ -5,7 +5,9 @@ participant "SQS: Intelligence Queue" as SQS
 participant "Intelligence Worker" as IW
 participant "Daily Data Fetcher" as DF
 participant "Retrain Lambda" as RL
-participant "SageMaker" as SM
+participant "Audit Reconciler" as AR
+participant "Upstash Redis" as Cache
+participant "SageMaker Endpoints" as SM
 participant "S3: Data & Models" as S3
 participant "PostgreSQL" as DB
 participant "Market & News API" as API
@@ -13,18 +15,21 @@ participant "Market & News API" as API
 # MAIN INFERENCE FLOW
 note over SL: Triggered via EventBridge
 SL -> SNS: Publish Stock Batch (symbols)
-SNS -> SQS: Fan-out Pattern (Filter Policy: symbols=PremiumTickers)
+SNS -> SQS: Fan-out Pattern (Filter Policy: PremiumTickers)
 
 note over IW: Processed per Symbol
 SQS -> IW: Deliver Symbol Message
-IW -> API: Fetch current price and last 2 days of news
-API -->> IW: Stock + News Data
-IW -> IW: Apply decay factor to news
-IW -> IW: Get sentiment score and sentiment strength
-IW -> S3: Load the model (Model Weights)
-S3 -->> IW: Model Loaded
-IW -> IW: Get inference
-IW -> DB: Save results to PostgreSQL
+IW -> API: Fetch current price + top 20 news articles
+API -->> IW: Raw Data
+IW -> IW: Calculate Decayed Sentiment Pulse
+IW -> SM: Invoke Sentiment Model Endpoint
+SM -->> IW: Sentiment score
+IW -> SM: Invoke Ticker-Specific Inference Endpoint (e.g. price-model-AAPL-endpoint)
+SM -->> IW: Price Model Probability
+IW -> IW: Blend (1-w)Model + (w)Sentiment
+IW -> DB: Save Results (conviction, modelScore, sentiment)
+IW -> Cache: Invalidate Key (stock:SYMBOL)
+note right of Cache: Forces frontend to fetch fresh AI signals
 
 # DAILY DATA PIPELINE
 note over DF: Daily Scheduled Ingestion
@@ -37,7 +42,13 @@ DF -> S3: Save records to S3 every day
 
 # MODEL RETRAINING
 note over RL: Periodic Maintenance
-RL -> S3: Load training data for all 8 stocks
-RL -> SM : Retrains the model for all 8 stocks
+RL -> S3: Load training data for all premium stocks
+RL -> SM : Retrains the model for all premium stocks
 SM -> S3 : store model weights
+
+# SYSTEM AUDIT
+note over AR: Daily Reconciliation (Midnight UTC)
+AR -> DB: Fetch 24h old predictions
+AR -> DB: Compare predictions vs current price moves
+AR -> DB: Calculate accuracy metrics and log to SignalAudits
 
