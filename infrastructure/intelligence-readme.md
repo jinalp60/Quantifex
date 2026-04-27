@@ -44,8 +44,8 @@ Upload the consolidated worker logic to your S3 deployment bucket.
 ```bash
 cd backend/workers
 # Bundle all 5 Python AI scripts into one unified ZIP
-"/c/Program Files/7-Zip/7z.exe" a intelligence-v2.zip intelligence_worker.py daily_data_fetcher.py retrain_trigger.py bootstrap_history_ingestion.py audit_reconciler.py
-aws s3 cp intelligence-v2.zip s3://quantifex-lambdas/intelligence-v2.zip
+"/c/Program Files/7-Zip/7z.exe" a intelligence-v4.zip intelligence_worker.py daily_data_fetcher.py retrain_trigger.py bootstrap_history_ingestion.py audit_reconciler.py
+aws s3 cp intelligence-v4.zip s3://quantifex-lambdas/intelligence-v4.zip
 ```
 
 ### Step 2.3: Package Training Source 

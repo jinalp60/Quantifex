@@ -67,7 +67,7 @@ export const handler = async (event) => {
                             `P/E: ${quote.trailingPE?.toFixed(2) || 'N/A'}`;
 
                         // Update or create stock record with new SMA fields
-                        await Stock.upsert({
+                        const [updatedStock] = await Stock.upsert({
                             symbol: symbol,
                             currentPrice: currentPrice,
                             volume: quote.regularMarketVolume || 0,
@@ -84,22 +84,9 @@ export const handler = async (event) => {
 
                         console.log(`Updated ${symbol}: $${currentPrice}. SMAs: 50D=${sma50}, 200D=${sma200}`);
 
-                        // Update Redis cache with full stock data including SMAs
-                        await cacheStock(symbol, {
-                            symbol: symbol,
-                            currentPrice: currentPrice,
-                            volume: quote.regularMarketVolume || 0,
-                            open: quote.regularMarketOpen || currentPrice,
-                            close: quote.regularMarketPreviousClose || currentPrice,
-                            high: quote.regularMarketDayHigh || currentPrice,
-                            low: quote.regularMarketDayLow || currentPrice,
-                            sma50: sma50,
-                            sma200: sma200,
-                            intrinsicValue: currentPrice * 0.9,
-                            valuationStatus: valuationStatus,
-                            analysisSummary: analysisSummary,
-                            updatedAt: new Date().toISOString()
-                        });
+                        // Update Redis cache with FULL stock data from the DB record
+                        // This ensures intelligence fields (sentiment, conviction) are preserved
+                        await cacheStock(symbol, updatedStock.get({ plain: true }));
 
                     } catch (symbolError) {
                         // Log full error details for debugging

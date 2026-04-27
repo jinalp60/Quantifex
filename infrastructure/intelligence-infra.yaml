@@ -49,6 +49,10 @@ Parameters:
   PremiumTickers:
     Type: CommaDelimitedList
     Default: "AAPL,VOO"
+  UpstashRedisUrl:
+    Type: String
+  UpstashRedisToken:
+    Type: String
 
 Resources:
   # 1. Dependency Layers
@@ -211,7 +215,7 @@ Resources:
       Role: !GetAtt WorkerExecutionRole.Arn
       Code:
         S3Bucket: !ImportValue QuantifexLambdaBucketName
-        S3Key: intelligence-v3.zip
+        S3Key: intelligence-v4.zip
       Runtime: python3.9
       Timeout: 120
       MemorySize: 512
@@ -232,6 +236,8 @@ Resources:
           BEARISH_THRESHOLD: !Ref BearishThreshold
           NEWS_FETCH_LIMIT: !Ref NewsFetchLimit
           LOOKBACK_DAYS: !Ref LookbackDays
+          UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
+          UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
 
   IntelligenceSQSTrigger:
     Type: AWS::Lambda::EventSourceMapping
@@ -251,7 +257,7 @@ Resources:
       Role: !GetAtt WorkerExecutionRole.Arn
       Code:
         S3Bucket: !ImportValue QuantifexLambdaBucketName
-        S3Key: intelligence-v3.zip
+        S3Key: intelligence-v4.zip
       Runtime: python3.9
       Timeout: 900
       MemorySize: 512
@@ -273,7 +279,7 @@ Resources:
       Role: !GetAtt WorkerExecutionRole.Arn
       Code:
         S3Bucket: !ImportValue QuantifexLambdaBucketName
-        S3Key: intelligence-v3.zip
+        S3Key: intelligence-v4.zip
       Runtime: python3.9
       Timeout: 300
       MemorySize: 512
@@ -297,7 +303,7 @@ Resources:
       Role: !GetAtt WorkerExecutionRole.Arn
       Code:
         S3Bucket: !ImportValue QuantifexLambdaBucketName
-        S3Key: intelligence-v3.zip
+        S3Key: intelligence-v4.zip
       Runtime: python3.9
       Timeout: 900
       MemorySize: 512
@@ -321,7 +327,7 @@ Resources:
       Role: !GetAtt WorkerExecutionRole.Arn
       Code:
         S3Bucket: !ImportValue QuantifexLambdaBucketName
-        S3Key: intelligence-v3.zip
+        S3Key: intelligence-v4.zip
       Runtime: python3.9
       Timeout: 300
       MemorySize: 512

@@ -10,6 +10,8 @@ import joblib
 import finnhub
 import yfinance as yf
 from io import BytesIO
+import urllib3
+import math
 
 # AWS Clients
 s3 = boto3.client('s3')
@@ -23,6 +25,8 @@ S3_MODEL_BUCKET = os.environ.get('S3_MODEL_BUCKET')
 TRAINING_DATA_BUCKET = os.environ.get('TRAINING_DATA_BUCKET')
 FINNHUB_SECRET_ID = os.environ.get('FINNHUB_SECRET_ID')
 DB_URL = os.environ.get('DATABASE_URL')
+REDIS_URL = os.environ.get('UPSTASH_REDIS_REST_URL')
+REDIS_TOKEN = os.environ.get('UPSTASH_REDIS_REST_TOKEN')
 
 # Intelligence Math Constants
 DECAY_LAMBDA = float(os.environ.get('DECAY_LAMBDA', 0.0005)) 
@@ -34,7 +38,8 @@ LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', 10))
 
 def get_finnhub_api_key():
     response = secrets.get_secret_value(SecretId=FINNHUB_SECRET_ID)
-    return response['SecretString']
+    secret_data = json.loads(response['SecretString'])
+    return secret_data.get('api_key')
 
 def fetch_ticker_news(ticker, api_key):
     client = finnhub.Client(api_key=api_key)
@@ -59,6 +64,13 @@ def get_sentiment(headlines):
     )
     
     results = json.loads(response['Body'].read().decode())
+    
+    # Handle SageMaker returning a single list of dictionaries for one input
+    # Expected: [[{'label': 'positive', 'score': 0.9}, ...], [...]]
+    # Actual (sometimes): [{'label': 'positive', 'score': 0.9}, ...]
+    if isinstance(results, list) and len(results) > 0 and isinstance(results[0], dict):
+        results = [results]
+        
     decayed_scores = []
     now_ts = datetime.now().timestamp()
     
@@ -119,6 +131,27 @@ def get_historical_context(ticker_symbol, days=15):
     # Combine and ensure chronological order
     df = pd.concat(frames).sort_index()
     return df
+
+def invalidate_cache(symbol):
+    """Invalidates the Redis cache for a given symbol via Upstash REST API."""
+    if not REDIS_URL or not REDIS_TOKEN:
+        print(f"Skipping cache invalidation for {symbol}: Redis not configured")
+        return
+    
+    http = urllib3.PoolManager()
+    key = f"stock:{symbol.upper()}"
+    headers = {'Authorization': f'Bearer {REDIS_TOKEN}'}
+    
+    try:
+        # Upstash REST DEL command
+        endpoint = f"{REDIS_URL.rstrip('/')}/del/{key}"
+        resp = http.request('GET', endpoint, headers=headers)
+        if resp.status == 200:
+            print(f"Successfully invalidated cache for {symbol}")
+        else:
+            print(f"Failed to invalidate cache for {symbol}. Status: {resp.status}")
+    except Exception as e:
+        print(f"Error during cache invalidation for {symbol}: {str(e)}")
 
 def handler(event, context):
     try:
@@ -182,6 +215,11 @@ def handler(event, context):
                 # Conviction = (1 - w) * ModelProb + w * SentimentProb
                 final_conviction = ((1 - w) * model_prob) + (w * sentiment_prob)
                 
+                # NaN Safety Check (prevent database/frontend errors)
+                if math.isnan(final_conviction): final_conviction = 0.5
+                if math.isnan(model_prob): model_prob = 0.5
+                if math.isnan(avg_decayed_sentiment): avg_decayed_sentiment = 0.0
+                
                 # 5. Determine Rating
                 rating = "NEUTRAL"
                 if final_conviction > BULLISH_THRESHOLD: rating = "BULLISH"
@@ -198,9 +236,10 @@ def handler(event, context):
                                 "newsSummary" = %s, 
                                 "convictionScore" = %s, 
                                 "convictionRating" = %s, 
+                                "modelScore" = %s,
                                 "intelligenceUpdatedAt" = NOW()
                             WHERE "symbol" = %s
-                        """, (avg_decayed_sentiment, json.dumps(news_summary), final_conviction, rating, symbol))
+                        """, (avg_decayed_sentiment, json.dumps(news_summary), final_conviction, rating, model_prob, symbol))
                         
                         # Log to SignalAudits for performance tracking (24h reconciliation)
                         current_price = float(df_context.iloc[-1]['Close'])
@@ -211,6 +250,8 @@ def handler(event, context):
                         """, (symbol, current_price, final_conviction, rating))
                         
                     conn.commit()
+                    # 7. Invalidate cache to force frontend to fetch fresh AI insights from DB
+                    invalidate_cache(symbol)
                 finally:
                     conn.close()
 

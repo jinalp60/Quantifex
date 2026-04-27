@@ -32,6 +32,10 @@ export default (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        modelScore: {
+            type: DataTypes.FLOAT,
+            allowNull: true
+        },
         sma50: {
             type: DataTypes.FLOAT,
             allowNull: true

@@ -188,7 +188,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: quantifex-lambdas
-        S3Key: worker-v6.zip
+        S3Key: worker-v7.zip
       Runtime: nodejs18.x
       Timeout: 60
       Environment:
